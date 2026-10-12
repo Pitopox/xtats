@@ -411,6 +411,17 @@ function reducer(state, action) {
     case "REPORT":
       return state.reported.includes(action.postId) ? state : { ...state, reported: [...state.reported, action.postId] };
 
+    // Al iniciar sesión: trae del servidor los récords (gana el mejor) y el reto de hoy
+    case "MERGE_REMOTE": {
+      const records = { ...state.records };
+      for (const r of action.records ?? []) if (isBetter(r.mode, r.ms, records[r.mode])) records[r.mode] = r.ms;
+      let daily = state.daily;
+      if (action.daily && !state.daily[action.day]?.done) {
+        daily = { ...daily, [action.day]: { scenario: scenarioFor(action.day), picks: [], done: true, score: Number(action.daily.score), grid: action.daily.grid } };
+      }
+      return { ...state, records, daily };
+    }
+
     case "SINCERE_POST":
       return { ...state, sincere: [{ id: m.id, ts: m.ts, text: action.text }, ...state.sincere].slice(0, 30) };
 
@@ -1268,6 +1279,50 @@ function ModePicker({ records, onPick, onClose }) {
   );
 }
 
+/** Hoja de cuenta: quién eres, conectar Google/Meta y cerrar sesión. */
+function AccountSheet({ name, email, provider, onClose }) {
+  const { t, userId, login, logout } = useApp();
+  return (
+    <div className="absolute inset-0 z-[57] flex flex-col justify-end bg-slate-900/20 backdrop-blur-[2px]" onClick={onClose}>
+      <div className="nd-sheet space-y-4 rounded-t-[2rem] bg-white p-5 pb-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mx-auto h-1 w-10 rounded-full bg-slate-200" />
+        <p className={S.label}>{t.account.title}</p>
+        <div className="flex items-center gap-3 rounded-2xl bg-rose-50/60 p-3">
+          <div className={cx(S.avatar, "from-pink-200 to-rose-100", "h-12 w-12 text-lg font-semibold text-pink-500")}>{(name || "?").slice(0, 1).toUpperCase()}</div>
+          <div className="min-w-0">
+            <p className="truncate font-medium text-slate-700">{name}</p>
+            <p className="truncate text-xs text-slate-400">
+              {userId ? `${t.account.signedInWith(provider === "facebook" ? "Meta" : "Google")}${email ? ` · ${email}` : ""}` : t.account.guest}
+            </p>
+          </div>
+        </div>
+        {!userId && remote.enabled && (
+          <div className="space-y-2">
+            <p className="text-xs text-slate-500">{t.account.connect}</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => login("google", name)} className={cx(S.btn, S.btnGhost, "py-2")}>
+                Google
+              </button>
+              <button onClick={() => login("facebook", name)} className={cx(S.btn, S.btnGhost, "py-2")}>
+                Meta
+              </button>
+            </div>
+          </div>
+        )}
+        <div className="space-y-1.5">
+          <button onClick={logout} className={cx(S.btn, S.btnDanger)}>
+            {userId ? t.account.signOut : t.account.leaveGuest}
+          </button>
+          <p className="text-center text-[10px] leading-relaxed text-slate-400">{userId ? t.account.signOutHint : t.account.leaveGuestHint}</p>
+        </div>
+        <button onClick={onClose} className="w-full py-2 text-xs text-slate-400 hover:text-slate-600">
+          {t.account.close}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** Hoja para compartir: imagen + compartir/descargar/copiar. */
 function ShareSheet({ image, text, filename, onClose }) {
   const { t, track, pushToast } = useApp();
@@ -1943,6 +1998,7 @@ export default function App() {
   const [picker, setPicker] = useState(false);
   const [sincere, setSincere] = useState(false);
   const [sheet, setSheet] = useState(null);
+  const [account, setAccount] = useState(false);
   const [metricsValues, track] = useMetrics();
   const [session, setSession] = useState(null);
   const [cloud, setCloud] = useState({ profile: null, friends: [], loading: false });
@@ -2029,6 +2085,8 @@ export default function App() {
         /* sin almacenamiento */
       }
       if (!profileRef.current) dispatch({ type: "ONBOARD", name: profile.name });
+      const mine = await remote.loadMine(userId, dateKey());
+      dispatch({ type: "MERGE_REMOTE", day: dateKey(), ...mine });
       const friends = await remote.loadFriends(userId, dateKey());
       setCloud({ profile, friends, loading: false });
     } catch {
@@ -2051,7 +2109,26 @@ export default function App() {
     },
     [pushToast]
   );
-  const logout = useCallback(() => remote.signOut().then(() => setSession(null)), []);
+  /** Cierra sesión (o sale del modo invitado) y vuelve a la pantalla de inicio. */
+  const logout = useCallback(async () => {
+    try {
+      if (remote.enabled) await remote.signOut();
+    } catch {
+      /* sin conexión: igual se limpia este dispositivo */
+    }
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(PENDING_KEY);
+    } catch {
+      /* sin almacenamiento */
+    }
+    setSession(null);
+    setAccount(false);
+    setSincere(false);
+    setPicker(false);
+    setTab("play");
+    dispatch({ type: "WIPE" });
+  }, []);
 
   // Récords y retos se envían al servidor (la función SQL conserva la mejor marca)
   useEffect(() => {
@@ -2304,6 +2381,16 @@ export default function App() {
                 <Logo />
                 <div className="flex items-center gap-2">
                   <LangSwitch lang={lang} onChange={setLang} />
+                  {onboarded && (
+                    <button
+                      type="button"
+                      onClick={() => setAccount(true)}
+                      aria-label={t.account.open}
+                      className={cx("grid h-7 w-7 place-items-center rounded-full bg-gradient-to-br from-pink-200 to-rose-100 text-[11px] font-semibold text-pink-500", userId ? "ring-2 ring-pink-300" : "ring-1 ring-slate-200")}
+                    >
+                      {(profile?.name ?? "?").slice(0, 1).toUpperCase()}
+                    </button>
+                  )}
                   <button onClick={() => setSoundOn((s) => !s)} className="text-sm" aria-label={t.soundAria} aria-pressed={soundOn}>
                     {soundOn ? "🔊" : "🔇"}
                   </button>
@@ -2414,6 +2501,14 @@ export default function App() {
             {onboarded && climbEnded && <RunResult run={run} records={records} onAgain={() => startRun("climb")} onShare={shareRun} onHome={() => (startRun("free"), setTab("today"))} />}
             {onboarded && inPrison && !sincere && <PrisonScreen run={run} records={records} onRestart={() => startRun(run.mode)} onSincere={() => setSincere(true)} onShare={shareRun} />}
             {onboarded && sincere && <SincereScreen posts={state.sincere} onPost={(text) => dispatch({ type: "SINCERE_POST", text, meta: meta() })} onExit={() => startRun(run.mode)} />}
+            {account && (
+              <AccountSheet
+                name={cloud.profile?.name ?? profile?.name ?? me.name}
+                email={session?.user?.email}
+                provider={session?.user?.app_metadata?.provider}
+                onClose={() => setAccount(false)}
+              />
+            )}
             {picker && <ModePicker records={records} onPick={startRun} onClose={() => setPicker(false)} />}
             {sheet && <ShareSheet {...sheet} onClose={() => setSheet(null)} />}
             {!profile && !underage && <Onboarding lang={lang} setLang={setLang} onDone={(name) => dispatch({ type: "ONBOARD", name })} onUnderage={() => dispatch({ type: "UNDERAGE" })} />}

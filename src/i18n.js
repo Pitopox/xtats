@@ -234,6 +234,18 @@ export const I18N = {
       you: "Tú",
     },
 
+    account: {
+      title: "Tu cuenta",
+      open: "Abrir tu cuenta",
+      signedInWith: (p) => `Sesión iniciada con ${p}`,
+      guest: "Modo invitado: tus datos están solo en este dispositivo.",
+      connect: "Conecta tu cuenta para guardar tus récords:",
+      signOut: "Cerrar sesión",
+      signOutHint: "Tus récords y retos quedan guardados en tu cuenta. En este dispositivo se borra la partida actual.",
+      leaveGuest: "Salir y borrar datos",
+      leaveGuestHint: "Como invitado, tus partidas están solo aquí y se borrarán.",
+      close: "Cerrar",
+    },
     postMenu: { open: "Más opciones", report: "Reportar", block: "Bloquear" },
 
     metrics: {
@@ -556,6 +568,18 @@ export const I18N = {
       you: "You",
     },
 
+    account: {
+      title: "Your account",
+      open: "Open your account",
+      signedInWith: (p) => `Signed in with ${p}`,
+      guest: "Guest mode: your data lives only on this device.",
+      connect: "Connect your account to save your records:",
+      signOut: "Sign out",
+      signOutHint: "Your records and challenges stay saved in your account. The current run on this device is cleared.",
+      leaveGuest: "Leave and erase data",
+      leaveGuestHint: "As a guest, your runs live only here and will be erased.",
+      close: "Close",
+    },
     postMenu: { open: "More options", report: "Report", block: "Block" },
 
     metrics: {
@@ -878,6 +902,18 @@ export const I18N = {
       you: "Você",
     },
 
+    account: {
+      title: "Sua conta",
+      open: "Abrir sua conta",
+      signedInWith: (p) => `Conectado com ${p}`,
+      guest: "Modo convidado: seus dados ficam só neste dispositivo.",
+      connect: "Conecte sua conta para salvar seus recordes:",
+      signOut: "Sair da conta",
+      signOutHint: "Seus recordes e desafios continuam salvos na sua conta. A partida atual deste dispositivo é apagada.",
+      leaveGuest: "Sair e apagar dados",
+      leaveGuestHint: "Como convidado, suas partidas ficam só aqui e serão apagadas.",
+      close: "Fechar",
+    },
     postMenu: { open: "Mais opções", report: "Denunciar", block: "Bloquear" },
 
     metrics: {

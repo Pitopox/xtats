@@ -71,6 +71,15 @@ export const remote = {
     });
   },
 
+  /** Mis propios récords y mi reto del día guardados en el servidor. */
+  async loadMine(userId, day) {
+    const [records, daily] = await Promise.all([
+      supabase.from("records").select("mode, ms").eq("user_id", userId).then(check),
+      supabase.from("daily_results").select("score, grid").eq("user_id", userId).eq("day", day).maybeSingle().then(check),
+    ]);
+    return { records, daily };
+  },
+
   /* ---------- Juego ---------- */
   async submitRecord(mode, ms) {
     return check(await supabase.rpc("submit_record", { p_mode: mode, p_ms: Math.round(ms) }));
