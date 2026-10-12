@@ -47,6 +47,7 @@ const MODES = {
 const MODE_ORDER = ["free", "speedrun", "climb", "survival"];
 const RECORD_MODES = ["speedrun", "climb", "survival"];
 const LOWER_IS_BETTER = { speedrun: true, climb: true, survival: false };
+const MODE_ICON = { free: "🌸", speedrun: "⏱️", climb: "🥂", survival: "🧠" };
 
 /**
  * Reto diario: lo que provoca cada opción. Alineado por índice con
@@ -1228,7 +1229,7 @@ function RunResult({ run, records, onAgain, onShare, onHome }) {
 }
 
 /** Barra del modo actual con reloj y récord. */
-function ModeBar({ run, records, onChange }) {
+function ModeBar({ run, records, onChange, onHelp }) {
   const { t } = useApp();
   const [now, setNow] = useState(Date.now());
   const active = !run.endedAt;
@@ -1249,6 +1250,9 @@ function ModeBar({ run, records, onChange }) {
         </p>
       </div>
       {clock && <span className={cx("font-mono text-lg tabular-nums", limit && limit - elapsed < 20000 ? "nd-blink text-rose-400" : "text-slate-600")}>{clock}</span>}
+      <button type="button" onClick={onHelp} aria-label={t.howto.open} title={t.howto.open} className="grid h-7 w-7 place-items-center rounded-full bg-white text-xs font-semibold text-slate-400 ring-1 ring-slate-200 hover:text-pink-500">
+        ?
+      </button>
       <button type="button" onClick={onChange} className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-medium text-pink-500 ring-1 ring-pink-100 hover:bg-pink-100">
         {t.modeBar.change}
       </button>
@@ -1257,16 +1261,21 @@ function ModeBar({ run, records, onChange }) {
 }
 
 /** Hoja para elegir modo de juego. */
-function ModePicker({ records, onPick, onClose }) {
+function ModePicker({ records, onPick, onClose, onHelp }) {
   const { t } = useApp();
   return (
     <div className="absolute inset-0 z-[57] flex flex-col justify-end bg-slate-900/20 backdrop-blur-[2px]" onClick={onClose}>
       <div className="nd-sheet space-y-3 rounded-t-[2rem] bg-white p-5 pb-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mx-auto h-1 w-10 rounded-full bg-slate-200" />
-        <p className={S.label}>{t.modeBar.pick}</p>
+        <div className="flex items-center justify-between">
+          <p className={S.label}>{t.modeBar.pick}</p>
+          <button type="button" onClick={onHelp} className="text-xs font-medium text-pink-500 hover:text-pink-600">
+            {t.howto.open} →
+          </button>
+        </div>
         {MODE_ORDER.map((mode) => (
           <button key={mode} type="button" onClick={() => onPick(mode)} className="flex w-full items-center gap-3 rounded-2xl bg-rose-50/60 p-4 text-left ring-1 ring-pink-100 transition hover:bg-pink-50">
-            <span className="text-2xl">{{ free: "🌸", speedrun: "⏱️", climb: "🥂", survival: "🧠" }[mode]}</span>
+            <span className="text-2xl">{MODE_ICON[mode]}</span>
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-medium text-slate-700">{t.modes[mode].name}</span>
               <span className="block text-xs text-slate-400">{t.modes[mode].desc}</span>
@@ -1274,6 +1283,64 @@ function ModePicker({ records, onPick, onClose }) {
             {RECORD_MODES.includes(mode) && <span className="text-xs tabular-nums text-pink-400">{fmtTime(records[mode])}</span>}
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/** Guía "Cómo se juega": reglas básicas y qué significa cada modo. */
+function HowToSheet({ current, onClose }) {
+  const { t } = useApp();
+  const H = t.howto;
+  return (
+    <div className="absolute inset-0 z-[58] flex flex-col justify-end bg-slate-900/20 backdrop-blur-[2px]" onClick={onClose}>
+      <div className="nd-sheet max-h-[90%] space-y-5 overflow-y-auto rounded-t-[2rem] bg-white p-5 pb-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mx-auto h-1 w-10 rounded-full bg-slate-200" />
+        <h2 className="text-lg font-medium text-slate-700">{H.title}</h2>
+
+        <section className="space-y-2">
+          <p className={S.label}>{H.modesLabel}</p>
+          {MODE_ORDER.map((mode) => {
+            const m = H.modes[mode];
+            return (
+              <article key={mode} className={cx("space-y-2 rounded-2xl p-4 ring-1", mode === current ? "bg-pink-50 ring-pink-200" : "bg-rose-50/40 ring-pink-100")}>
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">{MODE_ICON[mode]}</span>
+                  <h3 className="text-sm font-semibold text-slate-700">{t.modes[mode].name}</h3>
+                </div>
+                <dl className="grid grid-cols-[5.5rem_1fr] gap-x-2 gap-y-1.5 text-xs leading-relaxed">
+                  {[
+                    [H.goal, m.goal],
+                    [H.win, m.win],
+                    [H.record, m.record],
+                    [H.tip, m.tip],
+                  ].map(([k, v]) => (
+                    <div key={k} className="contents">
+                      <dt className="font-medium text-slate-400">{k}</dt>
+                      <dd className="min-w-0 text-slate-600">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </article>
+            );
+          })}
+        </section>
+
+        <section className="space-y-2">
+          <p className={S.label}>{H.basicsLabel}</p>
+          <dl className="divide-y divide-rose-50 rounded-2xl bg-rose-50/40 px-4 ring-1 ring-pink-100">
+            {H.basics.map(([k, v]) => (
+              <div key={k} className="grid grid-cols-[6.5rem_1fr] gap-2 py-2.5 text-xs leading-relaxed">
+                <dt className="font-semibold text-slate-600">{k}</dt>
+                <dd className="min-w-0 text-slate-500">{v}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+
+        <button onClick={onClose} className={cx(S.btn, S.btnPrimary)}>
+          {H.close}
+        </button>
       </div>
     </div>
   );
@@ -1518,7 +1585,7 @@ function useWeek(state, t) {
   }, [state.days, state.daily, state.records, t]);
 }
 
-function TodayTab({ state, dispatch, metrics, openShare, goPlay }) {
+function TodayTab({ state, dispatch, metrics, openShare, goPlay, onHelp }) {
   const { t } = useApp();
   const week = useWeek(state, t);
   const entry = state.daily[dateKey()];
@@ -1573,9 +1640,14 @@ function TodayTab({ state, dispatch, metrics, openShare, goPlay }) {
         </button>
       </section>
 
-      <button onClick={goPlay} className={cx(S.btn, S.btnPrimary)}>
-        {t.modeBar.start} ★
-      </button>
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={onHelp} className={cx(S.btn, S.btnGhost)}>
+          {t.howto.open}
+        </button>
+        <button onClick={goPlay} className={cx(S.btn, S.btnPrimary)}>
+          {t.modeBar.start} ★
+        </button>
+      </div>
 
       <details className={cx(S.card, "p-4")}>
         <summary className={cx(S.label, "cursor-pointer")}>{t.metrics.label}</summary>
@@ -1999,6 +2071,7 @@ export default function App() {
   const [sincere, setSincere] = useState(false);
   const [sheet, setSheet] = useState(null);
   const [account, setAccount] = useState(false);
+  const [howto, setHowto] = useState(false);
   const [metricsValues, track] = useMetrics();
   const [session, setSession] = useState(null);
   const [cloud, setCloud] = useState({ profile: null, friends: [], loading: false });
@@ -2406,7 +2479,7 @@ export default function App() {
               )}
 
               <main className="space-y-4 px-4 pb-8 pt-1">
-                {tab === "today" && <TodayTab state={state} dispatch={dispatch} metrics={{ values: metricsValues, track }} openShare={openShare} goPlay={() => setTab("play")} />}
+                {tab === "today" && <TodayTab state={state} dispatch={dispatch} metrics={{ values: metricsValues, track }} openShare={openShare} goPlay={() => setTab("play")} onHelp={() => setHowto(true)} />}
 
                 {tab === "camera" && <CameraTab name={profile?.name ?? me.name} score={me.score} openShare={openShare} />}
 
@@ -2414,7 +2487,7 @@ export default function App() {
 
                 {tab === "play" && (
                   <>
-                    <ModeBar run={run} records={records} onChange={() => setPicker(true)} />
+                    <ModeBar run={run} records={records} onChange={() => setPicker(true)} onHelp={() => setHowto(true)} />
 
                     <section className={cx(S.card, "relative p-5 text-center")}>
                       <button onClick={shareRun} className="absolute right-4 top-4 rounded-full bg-rose-50 px-2.5 py-1 text-[10px] font-medium text-pink-500 ring-1 ring-pink-100" aria-label={t.share.share}>
@@ -2509,9 +2582,10 @@ export default function App() {
                 onClose={() => setAccount(false)}
               />
             )}
-            {picker && <ModePicker records={records} onPick={startRun} onClose={() => setPicker(false)} />}
+            {picker && <ModePicker records={records} onPick={startRun} onClose={() => setPicker(false)} onHelp={() => setHowto(true)} />}
+            {howto && <HowToSheet current={run.mode} onClose={() => setHowto(false)} />}
             {sheet && <ShareSheet {...sheet} onClose={() => setSheet(null)} />}
-            {!profile && !underage && <Onboarding lang={lang} setLang={setLang} onDone={(name) => dispatch({ type: "ONBOARD", name })} onUnderage={() => dispatch({ type: "UNDERAGE" })} />}
+            {!profile && !underage && <Onboarding lang={lang} setLang={setLang} onDone={(name) => (dispatch({ type: "ONBOARD", name }), setHowto(true))} onUnderage={() => dispatch({ type: "UNDERAGE" })} />}
             {underage && <Underage onWipe={wipe} />}
           </div>
         </div>
