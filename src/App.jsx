@@ -22,7 +22,7 @@ import { I18N, LANGS } from "./i18n.js";
 import { remote } from "./backend.js";
 import { SKINS, SKIN_CSS } from "./skins.js";
 import { FcGoogle } from "react-icons/fc";
-import { FaFacebook } from "react-icons/fa";
+import { FaFacebook, FaInstagram, FaTiktok } from "react-icons/fa";
 
 /* =========================================================================
    1. CONFIGURACIÓN
@@ -813,6 +813,98 @@ function fileToSquareJpeg(file, size = 320) {
   });
 }
 
+/** Comprime una foto de prueba (máx. 1280 px, JPEG) para subirla al reto. */
+function fileToJpegBlob(file, max = 1280) {
+  return new Promise((resolve, reject) => {
+    const src = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.naturalWidth * k);
+      c.height = Math.round(img.naturalHeight * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(src);
+      c.toBlob((b) => (b ? resolve(b) : reject(new Error("bad_image"))), "image/jpeg", 0.82);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(src);
+      reject(new Error("bad_image"));
+    };
+    img.src = src;
+  });
+}
+
+/** Colores de las tarjetas para compartir según el estilo elegido. */
+const CARD_THEME = {
+  pink: { bg: ["#fde7f1", "#fffafc", "#eef1f6"], text: "#334155", muted: "#94a3b8", accent: "#f472b6", off: "#f1d5e2", panel: "rgba(255,255,255,0.8)", font: FONT },
+  black: { bg: ["#040605", "#07100a", "#040605"], text: "#eafff0", muted: "#5f8a6b", accent: "#39ff14", off: "#16301c", panel: "rgba(57,255,20,0.06)", font: '"JetBrains Mono", ui-monospace, monospace' },
+  white: { bg: ["#ffffff", "#ffffff", "#f7f9f9"], text: "#0f1419", muted: "#536471", accent: "#1d9bf0", off: "#e1e8ed", panel: "#f7f9f9", font: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" },
+};
+
+/** Tarjeta 9:16 del resultado de un reto: estrellas de quien retó y cambio de puntaje. */
+function renderDareCard({ t, skin = "white", name, senderName, title, stars, before, after }) {
+  const th = CARD_THEME[skin] ?? CARD_THEME.white;
+  const c = document.createElement("canvas");
+  c.width = CARD_W;
+  c.height = CARD_H;
+  const ctx = c.getContext("2d");
+  const g = ctx.createLinearGradient(0, 0, CARD_W, CARD_H);
+  th.bg.forEach((col, i) => g.addColorStop(i / (th.bg.length - 1), col));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, CARD_W, CARD_H);
+  ctx.textAlign = "center";
+  const txt = (s, y, size, weight, color, max = 900) => {
+    ctx.font = `${weight} ${size}px ${th.font}`;
+    ctx.fillStyle = color;
+    const words = String(s).split(" ");
+    let line = "";
+    let yy = y;
+    for (const w of words) {
+      const test = line ? `${line} ${w}` : w;
+      if (ctx.measureText(test).width > max && line) {
+        ctx.fillText(line, CARD_W / 2, yy);
+        line = w;
+        yy += size * 1.25;
+      } else line = test;
+    }
+    ctx.fillText(line, CARD_W / 2, yy);
+    return yy;
+  };
+  // marca
+  ctx.fillStyle = th.accent;
+  ctx.beginPath();
+  ctx.arc(CARD_W / 2 - 150, 160, 9, 0, Math.PI * 2);
+  ctx.fill();
+  txt("X T A T S", 176, 46, 600, th.text);
+  // reto
+  txt(t.card.dareLine(senderName).toUpperCase(), 330, 32, 600, th.muted);
+  const yTitle = txt(`«${title}»`, 450, 70, 700, th.text, 880);
+  // panel con estrellas
+  const top = Math.max(620, yTitle + 110);
+  ctx.fillStyle = th.panel;
+  rrect(ctx, 110, top, 860, 560, 56);
+  ctx.fill();
+  if (skin === "black") {
+    ctx.strokeStyle = th.accent;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+  ctx.font = `150px ${th.font}`;
+  const starW = 150;
+  for (let i = 0; i < 5; i++) {
+    ctx.fillStyle = i < stars ? th.accent : th.off;
+    ctx.fillText("★", CARD_W / 2 + (i - 2) * starW, top + 230);
+  }
+  txt(`${stars}/5`, top + 330, 44, 600, th.muted);
+  if (before != null && after != null) txt(`${fmt(before)} → ${fmt(after)}`, top + 460, 96, 300, th.accent);
+  // persona
+  txt(name, top + 720, 64, 700, th.text);
+  txt(t.tagline, top + 810, 38, 400, th.muted);
+  txt(t.card.footer, CARD_H - 110, 34, 400, th.muted);
+  return c.toDataURL("image/png");
+}
+
 /** "2 d 4 h", "5 h 12 min", "12 min". */
 function fmtLeft(ms) {
   const m = Math.max(1, Math.round(ms / 60000));
@@ -1502,13 +1594,33 @@ function AccountSheet({ name, email, provider, photo, skin, onSkin, onPhoto, onC
 const STATUS_TONE = {
   pending: "bg-amber-50 text-amber-600",
   accepted: "bg-pink-100 text-pink-600",
-  claimed: "bg-sky-100 text-sky-700",
-  completed: "bg-pink-300 text-white",
-  failed: "bg-slate-600 text-white",
+  awaiting: "bg-sky-100 text-sky-700",
+  rate: "bg-pink-300 text-white",
+  rated: "bg-pink-300 text-white",
   declined: "bg-slate-100 text-slate-400",
   expired: "bg-slate-100 text-slate-400",
+  unrated: "bg-slate-100 text-slate-500",
 };
 const UNKNOWN_PERSON = { name: "…", avatar: "?", gradient: "from-slate-100 to-slate-200" };
+const RATE_WINDOW_MS = 3 * 24 * 3600000;
+
+/** Estado visible de un destinatario según su estado guardado y el plazo. */
+function dareState(target, deadline, asSender) {
+  const ended = new Date(deadline).getTime() <= Date.now();
+  switch (target.status) {
+    case "pending":
+      return ended ? "expired" : "pending";
+    case "accepted":
+    case "claimed":
+      return ended ? (asSender ? "rate" : "awaiting") : "accepted";
+    case "completed":
+      return target.stars ? "rated" : "awaiting";
+    case "expired":
+      return target.accepted_at ? "unrated" : "expired";
+    default:
+      return "declined";
+  }
+}
 
 function TimeLeft({ deadline }) {
   const { t } = useApp();
@@ -1521,11 +1633,107 @@ function TimeLeft({ deadline }) {
   return <span className={cx("text-[11px] tabular-nums", ms > 0 && ms < 3600000 ? "text-rose-500" : "text-slate-400")}>{ms <= 0 ? t.challenges.ended : t.challenges.left(fmtLeft(ms))}</span>;
 }
 
-function ReceivedCard({ c, sender = UNKNOWN_PERSON, onAction }) {
+/** Estrellas fijas (solo lectura). */
+function StarsShown({ n, size = "text-lg" }) {
+  const { t } = useApp();
+  return (
+    <span className={cx("tracking-tight", size)} role="img" aria-label={t.challenges.starsAria(n)}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <span key={i} className={i <= n ? "text-pink-400" : "text-slate-200"}>
+          ★
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** Lista de publicaciones del reto (texto y foto). */
+function DarePosts({ posts, canDelete, onDelete }) {
+  const { t, lang } = useApp();
+  if (!posts?.length) return <p className="text-[11px] text-slate-400">{t.challenges.noPosts}</p>;
+  return (
+    <ul className="space-y-2">
+      {posts.map((p) => (
+        <li key={p.id} className="overflow-hidden rounded-2xl bg-white ring-1 ring-slate-100">
+          {p.photo && <img src={p.photo} alt="" loading="lazy" className="max-h-72 w-full bg-slate-50 object-cover" />}
+          {(p.body || canDelete) && (
+            <div className="flex items-start gap-2 px-3 py-2">
+              <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm text-slate-600">{p.body}</p>
+              {canDelete && (
+                <button onClick={() => onDelete(p)} className="shrink-0 text-[11px] text-slate-400 hover:text-rose-500">
+                  {t.challenges.actions.delete}
+                </button>
+              )}
+            </div>
+          )}
+          <p className="px-3 pb-2 text-[10px] text-slate-400">{new Date(p.created_at).toLocaleString(I18N[lang].locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Formulario para publicar una prueba: texto y/o foto. */
+function DareComposer({ challengeId, onPost }) {
   const { t } = useApp();
   const C = t.challenges;
-  const st = c.mine.status;
-  const open = new Date(c.deadline).getTime() > Date.now();
+  const [body, setBody] = useState("");
+  const [photo, setPhoto] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef(null);
+  useEffect(() => () => photo && URL.revokeObjectURL(photo.url), [photo]);
+  const pick = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const blob = await fileToJpegBlob(file);
+      setPhoto({ blob, url: URL.createObjectURL(blob) });
+    } catch {
+      /* imagen no válida */
+    }
+  };
+  const ready = (body.trim() || photo) && !busy;
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!ready) return;
+    setBusy(true);
+    const ok = await onPost(challengeId, body.trim(), photo?.blob ?? null);
+    setBusy(false);
+    if (ok) {
+      setBody("");
+      setPhoto(null);
+    }
+  };
+  return (
+    <form onSubmit={submit} className="space-y-2 rounded-2xl bg-rose-50/40 p-2">
+      <textarea value={body} maxLength={280} rows={2} onChange={(e) => setBody(e.target.value)} placeholder={C.postPh} className={cx(S.field, "resize-none p-3")} />
+      {photo && (
+        <div className="relative">
+          <img src={photo.url} alt="" className="max-h-56 w-full rounded-2xl object-cover" />
+          <button type="button" onClick={() => setPhoto(null)} className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[11px] text-slate-600 shadow">
+            {C.actions.removePhoto}
+          </button>
+        </div>
+      )}
+      <div className="flex gap-2">
+        <input ref={fileRef} type="file" accept="image/*" onChange={pick} className="hidden" />
+        <button type="button" onClick={() => fileRef.current?.click()} className={cx(S.btn, S.btnGhost, "w-auto px-4 py-2")}>
+          📷 {C.actions.addPhoto}
+        </button>
+        <button type="submit" disabled={!ready} className={cx(S.btn, S.btnPrimary, "py-2")}>
+          {busy ? "…" : C.actions.post}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function ReceivedCard({ c, sender = UNKNOWN_PERSON, onAction, onPost, onDeletePost, onShare }) {
+  const { t } = useApp();
+  const C = t.challenges;
+  const mine = c.mine;
+  const st = dareState(mine, c.deadline, false);
   return (
     <article className={cx(S.card, "space-y-3 p-4")}>
       <header className="flex items-start gap-3">
@@ -1540,15 +1748,9 @@ function ReceivedCard({ c, sender = UNKNOWN_PERSON, onAction }) {
         <span className={cx(S.pill, "shrink-0", STATUS_TONE[st])}>{C.status[st]}</span>
       </header>
       {c.details && <p className="whitespace-pre-wrap break-words text-sm text-slate-600">{c.details}</p>}
-      <div className="flex items-center justify-between gap-2">
-        <TimeLeft deadline={c.deadline} />
-        {c.mine.score_after != null && (
-          <span className="text-[11px] tabular-nums text-slate-500">
-            ★ {fmt(c.mine.score_before)} → {fmt(c.mine.score_after)}
-          </span>
-        )}
-      </div>
-      {st === "pending" && open && (
+      {st !== "rated" && <TimeLeft deadline={c.deadline} />}
+
+      {st === "pending" && (
         <>
           <p className="text-[11px] text-slate-400">{C.acceptHint}</p>
           <div className="grid grid-cols-2 gap-2">
@@ -1561,17 +1763,77 @@ function ReceivedCard({ c, sender = UNKNOWN_PERSON, onAction }) {
           </div>
         </>
       )}
-      {st === "accepted" && open && (
-        <button onClick={() => onAction("claim", c.id)} className={cx(S.btn, S.btnPrimary, "py-2")}>
-          {C.actions.claim}
-        </button>
+
+      {st === "accepted" && (
+        <div className="space-y-2">
+          <p className={S.label}>{C.postsLabel}</p>
+          {mine.posts.length > 0 && <DarePosts posts={mine.posts} canDelete onDelete={onDeletePost} />}
+          {mine.posts.length < 10 && <DareComposer challengeId={c.id} onPost={onPost} />}
+          <p className="text-[11px] text-slate-400">{C.postHint(sender.name)}</p>
+        </div>
       )}
-      {st === "claimed" && <p className="text-[11px] text-slate-400">{C.claimedHint}</p>}
+
+      {st === "awaiting" && (
+        <div className="space-y-2">
+          <p className="text-[11px] text-slate-500">{C.awaitingHint(sender.name)}</p>
+          <details className="text-xs text-slate-500">
+            <summary className="cursor-pointer select-none">{C.postsCount(mine.posts.length)}</summary>
+            <div className="pt-2">
+              <DarePosts posts={mine.posts} />
+            </div>
+          </details>
+        </div>
+      )}
+
+      {st === "rated" && (
+        <div className="space-y-3 rounded-2xl bg-rose-50/50 p-3 text-center">
+          <p className="text-[11px] text-slate-500">{C.ratedBy(sender.name)}</p>
+          <StarsShown n={mine.stars} size="text-3xl" />
+          {mine.score_after != null && (
+            <p className="text-sm tabular-nums text-slate-600">
+              XTATS {fmt(mine.score_before)} → <span className="font-semibold text-pink-500">{fmt(mine.score_after)}</span>
+            </p>
+          )}
+          <button onClick={() => onShare(c, sender)} className={cx(S.btn, S.btnPrimary, "py-2")}>
+            ⇪ {C.actions.share}
+          </button>
+          {mine.shared_at && <p className="text-[11px] text-slate-400">✓ {C.sharedInApp}</p>}
+        </div>
+      )}
+
+      {st === "unrated" && <p className="text-[11px] text-slate-400">{C.unratedHint}</p>}
     </article>
   );
 }
 
-function SentCard({ c, people, onAction }) {
+/** Calificación de una persona retada: ve sus publicaciones y elige de 1 a 5★. */
+function RateTarget({ c, tg, person, onRate }) {
+  const { t } = useApp();
+  const C = t.challenges;
+  const [stars, setStars] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const left = new Date(c.deadline).getTime() + RATE_WINDOW_MS - Date.now();
+  const send = async () => {
+    setBusy(true);
+    await onRate(c.id, tg.recipient, stars);
+    setBusy(false);
+  };
+  return (
+    <div className="space-y-2">
+      <p className={S.label}>{C.postsOf(person.name)}</p>
+      <DarePosts posts={tg.posts} />
+      <div className="flex flex-col items-center gap-2 rounded-2xl bg-white p-3 ring-1 ring-pink-100">
+        <StarRating value={stars} onRate={setStars} disabled={busy} />
+        <button onClick={send} disabled={!stars || busy} className={cx(S.btn, S.btnPrimary, "py-2")}>
+          {busy ? "…" : C.actions.rate}
+        </button>
+        {left > 0 && <p className="text-center text-[10px] text-slate-400">{C.rateWindow(fmtLeft(left))}</p>}
+      </div>
+    </div>
+  );
+}
+
+function SentCard({ c, people, onRate }) {
   const { t } = useApp();
   const C = t.challenges;
   return (
@@ -1584,27 +1846,35 @@ function SentCard({ c, people, onAction }) {
       <ul className="space-y-2">
         {c.targets.map((tg) => {
           const p = people[tg.recipient] ?? UNKNOWN_PERSON;
+          const st = dareState(tg, c.deadline, true);
           return (
             <li key={tg.recipient} className="space-y-2 rounded-2xl bg-rose-50/40 px-3 py-2">
               <div className="flex items-center gap-2">
                 <Avatar person={p} size="h-7 w-7 text-sm" />
                 <span className="min-w-0 flex-1 truncate text-sm text-slate-600">{p.name}</span>
-                <span className={cx(S.pill, "shrink-0", STATUS_TONE[tg.status])}>{C.status[tg.status]}</span>
+                <span className={cx(S.pill, "shrink-0", STATUS_TONE[st])}>{C.status[st]}</span>
               </div>
-              {tg.status === "claimed" && (
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => onAction("confirm", c.id, tg.recipient)} className={cx(S.btn, S.btnPrimary, "py-1.5 text-xs")}>
-                    {C.actions.confirm}
-                  </button>
-                  <button onClick={() => onAction("reject", c.id, tg.recipient)} className={cx(S.btn, S.btnGhost, "py-1.5 text-xs")}>
-                    {C.actions.reject}
-                  </button>
+              {st === "accepted" && <p className="text-[11px] text-slate-400">{C.hiddenUntilEnd}</p>}
+              {st === "rate" && <RateTarget c={c} tg={tg} person={p} onRate={onRate} />}
+              {st === "rated" && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-slate-500">
+                      {C.youGave} <StarsShown n={tg.stars} size="text-sm" />
+                    </span>
+                    {tg.score_after != null && (
+                      <span className="text-[11px] tabular-nums text-slate-400">
+                        ★ {fmt(tg.score_before)} → {fmt(tg.score_after)}
+                      </span>
+                    )}
+                  </div>
+                  <details className="text-xs text-slate-500">
+                    <summary className="cursor-pointer select-none">{C.postsCount(tg.posts.length)}</summary>
+                    <div className="pt-2">
+                      <DarePosts posts={tg.posts} />
+                    </div>
+                  </details>
                 </div>
-              )}
-              {tg.score_after != null && (
-                <p className="text-right text-[11px] tabular-nums text-slate-400">
-                  ★ {fmt(tg.score_before)} → {fmt(tg.score_after)}
-                </p>
               )}
             </li>
           );
@@ -1718,7 +1988,7 @@ function NewChallengeSheet({ myName, onClose, onSent }) {
 }
 
 /** Pestaña Retos: puntaje social, recibidos y enviados. */
-function ChallengesTab({ data, myName, onNew, onAction }) {
+function ChallengesTab({ data, shares, myName, onNew, onAction, onPost, onDeletePost, onRate, onShare }) {
   const { t, userId, cloud, login } = useApp();
   const C = t.challenges;
   if (!userId) {
@@ -1755,14 +2025,35 @@ function ChallengesTab({ data, myName, onNew, onAction }) {
         <p className="text-xs text-slate-400">{hasFriends ? C.intro : C.needFriends}</p>
       </section>
 
+      <section className="space-y-2">
+        <p className={cx(S.label, "px-1")}>{C.feed}</p>
+        {shares.length === 0 ? (
+          <p className={cx(S.muted, "px-1")}>{C.feedEmpty}</p>
+        ) : (
+          <ul className="space-y-2">
+            {shares.map((r) => (
+              <li key={`${r.challenge_id}-${r.recipient}`} className={cx(S.card, "flex items-center gap-3 p-3")}>
+                <Avatar person={r.person} size="h-10 w-10 text-base" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-slate-700">{r.recipient_name}</p>
+                  <p className="truncate text-[11px] text-slate-400">{C.feedLine(r.sender_name, r.title)}</p>
+                  <StarsShown n={r.stars} size="text-base" />
+                </div>
+                {r.score_after != null && <span className="shrink-0 text-lg font-light tabular-nums text-pink-500">{fmt(r.score_after)}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       <section className="space-y-3">
         <p className={cx(S.label, "px-1")}>{C.received}</p>
-        {data.received.length === 0 ? <p className={cx(S.muted, "px-1")}>{C.emptyReceived}</p> : data.received.map((c) => <ReceivedCard key={c.id} c={c} sender={data.people[c.sender]} onAction={onAction} />)}
+        {data.received.length === 0 ? <p className={cx(S.muted, "px-1")}>{C.emptyReceived}</p> : data.received.map((c) => <ReceivedCard key={c.id} c={c} sender={data.people[c.sender]} onAction={onAction} onPost={onPost} onDeletePost={onDeletePost} onShare={onShare} />)}
       </section>
 
       <section className="space-y-3">
         <p className={cx(S.label, "px-1")}>{C.sent}</p>
-        {data.sent.length === 0 ? <p className={cx(S.muted, "px-1")}>{C.emptySent}</p> : data.sent.map((c) => <SentCard key={c.id} c={c} people={data.people} onAction={onAction} />)}
+        {data.sent.length === 0 ? <p className={cx(S.muted, "px-1")}>{C.emptySent}</p> : data.sent.map((c) => <SentCard key={c.id} c={c} people={data.people} onRate={onRate} />)}
       </section>
     </div>
   );
@@ -1880,13 +2171,16 @@ function GroupsSection({ friends }) {
   );
 }
 
-/** Hoja para compartir: imagen + compartir/descargar/copiar. */
-function ShareSheet({ image, text, filename, onClose }) {
+/** Hoja para compartir: imagen hacia Instagram/TikTok (menú del sistema), dentro de XTATS, descarga o texto. */
+function ShareSheet({ image, text, filename, onClose, onInApp, inAppDone = false }) {
   const { t, track, pushToast } = useApp();
   const [copied, setCopied] = useState(false);
+  const [inApp, setInApp] = useState(inAppDone);
+  const [busy, setBusy] = useState(false);
   const textRef = useRef(null);
   useEffect(() => track("views"), [track]);
 
+  // En el celular abre el menú de compartir (ahí aparecen Instagram y TikTok); si no se puede, descarga
   const share = async () => {
     try {
       const file = new File([dataUrlToBlob(image)], filename, { type: "image/png" });
@@ -1895,10 +2189,10 @@ function ShareSheet({ image, text, filename, onClose }) {
         track("shares");
         return;
       }
-    } catch {
-      /* cancelado o no soportado: se descarga */
+    } catch (err) {
+      if (err?.name === "AbortError") return;
     }
-    download();
+    if (await download()) pushToast("toast", "imageSaved", "good");
   };
   const download = async () => {
     // Dentro de claude.ai la descarga pasa por la capacidad `downloads`; en Vite, por un enlace normal
@@ -1907,10 +2201,10 @@ function ShareSheet({ image, text, filename, onClose }) {
       try {
         await downloads.save({ filename, data: dataUrlToBlob(image) });
         track("downloads");
+        return true;
       } catch {
-        /* el usuario canceló o no está disponible: la imagen sigue visible para guardarla a mano */
+        return false;
       }
-      return;
     }
     const a = document.createElement("a");
     a.href = image;
@@ -1919,6 +2213,7 @@ function ShareSheet({ image, text, filename, onClose }) {
     a.click();
     a.remove();
     track("downloads");
+    return true;
   };
   const copy = () => {
     navigator.clipboard
@@ -1933,19 +2228,41 @@ function ShareSheet({ image, text, filename, onClose }) {
         pushToast("toast", "copyFailed", "danger");
       });
   };
+  const shareInApp = async () => {
+    setBusy(true);
+    try {
+      await onInApp();
+      setInApp(true);
+      pushToast("toast", "sharedInApp", "good");
+    } catch {
+      pushToast("toast", "dareFailed", "danger");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="absolute inset-0 z-[58] flex flex-col justify-end bg-slate-900/30 backdrop-blur-[2px]" onClick={onClose}>
       <div className="nd-sheet max-h-[92%] space-y-3 overflow-y-auto rounded-t-[2rem] bg-white p-5 pb-7 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mx-auto h-1 w-10 rounded-full bg-slate-200" />
         <p className={S.label}>{t.share.title}</p>
-        <img src={image} alt={text} className="mx-auto max-h-[46vh] w-auto max-w-full rounded-2xl shadow-lg ring-1 ring-pink-100 sm:max-h-80" />
-        <p className="text-center text-[10px] text-slate-400">{t.share.hint}</p>
+        <img src={image} alt={text} className="mx-auto max-h-[40vh] w-auto max-w-full rounded-2xl shadow-lg ring-1 ring-pink-100 sm:max-h-72" />
+        {onInApp && (
+          <button onClick={shareInApp} disabled={inApp || busy} className={cx(S.btn, inApp ? S.btnGhost : S.btnPrimary)}>
+            {inApp ? t.share.inAppDone : busy ? "…" : `★ ${t.share.inApp}`}
+          </button>
+        )}
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={share} className="flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-tr from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] px-4 py-3 text-sm font-semibold text-[#fff] transition active:scale-[0.98]">
+            <FaInstagram className="h-5 w-5" aria-hidden="true" /> {t.share.instagram}
+          </button>
+          <button onClick={share} className="flex items-center justify-center gap-2 rounded-2xl bg-[#000] px-4 py-3 text-sm font-semibold text-[#fff] transition active:scale-[0.98]">
+            <FaTiktok className="h-5 w-5" aria-hidden="true" /> {t.share.tiktok}
+          </button>
+        </div>
+        <p className="text-center text-[10px] leading-relaxed text-slate-400">{t.share.socialHint}</p>
         <textarea ref={textRef} readOnly value={text} rows={2} className={cx(S.field, "resize-none p-2 text-xs")} aria-label={t.share.copy} />
         <div className="grid grid-cols-2 gap-2">
-          <button onClick={share} className={cx(S.btn, S.btnPrimary, "col-span-2")}>
-            {t.share.share}
-          </button>
           <button onClick={download} className={cx(S.btn, S.btnGhost)}>
             {t.share.download}
           </button>
@@ -2084,7 +2401,7 @@ function TodayTab({ state, dispatch, metrics, openShare, goPlay, onHelp }) {
     const n = dayNumber();
     openShare({
       image: renderDailyCard({ t, n, title, score: e.score, grid: e.grid }),
-      text: `XTATS · ${t.daily.title(n)}\n${fmt(e.score)} ${e.grid}\n#XTATS xtats.app`,
+      text: `XTATS · ${t.daily.title(n)}\n${fmt(e.score)} ${e.grid}\n#XTATS xtats.us`,
       filename: `xtats-reto-${n}.png`,
       event: "dailyShares",
     });
@@ -2092,7 +2409,7 @@ function TodayTab({ state, dispatch, metrics, openShare, goPlay, onHelp }) {
   const shareWeek = () =>
     openShare({
       image: renderWeekCard({ t, name, rows: week.slice(0, 6) }),
-      text: `${t.week.label} · ${week.map(([k, v]) => `${k}: ${v}`).slice(0, 3).join(" · ")}\n#XTATS xtats.app`,
+      text: `${t.week.label} · ${week.map(([k, v]) => `${k}: ${v}`).slice(0, 3).join(" · ")}\n#XTATS xtats.us`,
       filename: "xtats-semana.png",
     });
 
@@ -2198,7 +2515,7 @@ function CameraTab({ name, score, openShare }) {
 
   const finish = (image) => {
     track("photos");
-    openShare({ image, text: `${name} ★ ${fmt(score)} · XTATS\n#XTATS xtats.app`, filename: "xtats-filtro.png" });
+    openShare({ image, text: `${name} ★ ${fmt(score)} · XTATS\n#XTATS xtats.us`, filename: "xtats-filtro.png" });
   };
   const capture = () => {
     const v = videoRef.current;
@@ -2566,13 +2883,14 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [cloud, setCloud] = useState({ profile: null, friends: [], groups: [], loading: false });
   const [chal, setChal] = useState({ received: [], sent: [], people: {}, loading: false });
+  const [shares, setShares] = useState([]);
   const [newDare, setNewDare] = useState(false);
   const [skin, setSkin] = useState(() => {
     try {
       const v = localStorage.getItem(SKIN_KEY);
-      return SKINS.includes(v) ? v : "pink";
+      return SKINS.includes(v) ? v : "white";
     } catch {
-      return "pink";
+      return "white";
     }
   });
 
@@ -2725,11 +3043,15 @@ export default function App() {
 
   /* ---------- Retos: cargar, refrescar cada 30 s en la pestaña y responder ---------- */
   const reloadChallenges = useCallback(async () => {
-    if (!userId) return setChal({ received: [], sent: [], people: {}, loading: false });
+    if (!userId) {
+      setShares([]);
+      return setChal({ received: [], sent: [], people: {}, loading: false });
+    }
     setChal((c) => ({ ...c, loading: true }));
     try {
-      const d = await remote.loadChallenges(userId);
+      const [d, sh] = await Promise.all([remote.loadChallenges(userId), remote.loadShares().catch(() => null)]);
       setChal({ ...d, loading: false });
+      if (sh) setShares(sh);
     } catch {
       setChal((c) => ({ ...c, loading: false }));
     }
@@ -2745,20 +3067,64 @@ export default function App() {
     return () => clearInterval(id);
   }, [tab, userId, reloadChallenges, reloadCloud]);
 
-  const dareAction = async (kind, id, recipient) => {
+  const dareAction = async (kind, id) => {
     try {
-      if (kind === "accept" || kind === "decline") await remote.respondChallenge(id, kind === "accept");
-      else if (kind === "claim") await remote.claimChallenge(id);
-      else await remote.resolveChallenge(id, recipient, kind === "confirm");
-      pushToast("toast", { accept: "dareAccepted", decline: "dareDeclined", claim: "dareClaimed", confirm: "dareResolved", reject: "dareResolved" }[kind], "good");
-      if (kind === "accept" || kind === "claim") sfx.playHarp();
+      await remote.respondChallenge(id, kind === "accept");
+      pushToast("toast", kind === "accept" ? "dareAccepted" : "dareDeclined", "good");
+      if (kind === "accept") sfx.playHarp();
     } catch {
       pushToast("toast", "dareFailed", "danger");
     }
     reloadChallenges();
-    reloadCloud();
   };
-  const pendingDares = chal.received.filter((c) => c.mine.status === "pending" && new Date(c.deadline).getTime() > Date.now()).length;
+  const darePost = async (challengeId, body, blob) => {
+    try {
+      await remote.addChallengePost(challengeId, userId, body, blob);
+      pushToast("toast", "postAdded", "good");
+      reloadChallenges();
+      return true;
+    } catch {
+      pushToast("toast", "postFailed", "danger");
+      return false;
+    }
+  };
+  const dareDeletePost = async (post) => {
+    try {
+      await remote.deleteChallengePost(post);
+    } catch {
+      pushToast("toast", "dareFailed", "danger");
+    }
+    reloadChallenges();
+  };
+  const dareRate = async (challengeId, recipient, stars) => {
+    try {
+      await remote.rateChallenge(challengeId, recipient, stars);
+      pushToast("toast", "rated", "good");
+      if (stars >= 4) sfx.playHarp();
+      else if (stars <= 2) sfx.playThud();
+    } catch {
+      pushToast("toast", "rateFailed", "danger");
+    }
+    reloadChallenges();
+  };
+  const dareShare = (c, sender) => {
+    const name = cloud.profile?.name ?? profile?.name ?? me.name;
+    const m = c.mine;
+    openShare({
+      image: renderDareCard({ t, skin, name, senderName: sender.name, title: c.title, stars: m.stars, before: m.score_before, after: m.score_after }),
+      text: `${"★".repeat(m.stars)}${"☆".repeat(5 - m.stars)} «${c.title}» · XTATS ${fmt(m.score_after)}\n#XTATS xtats.us`,
+      filename: "xtats-reto.png",
+      event: "shares",
+      inAppDone: !!m.shared_at,
+      onInApp: async () => {
+        await remote.shareChallenge(c.id);
+        reloadChallenges();
+      },
+    });
+  };
+  const pendingDares =
+    chal.received.filter((c) => dareState(c.mine, c.deadline, false) === "pending").length +
+    chal.sent.reduce((n, c) => n + c.targets.filter((tg) => dareState(tg, c.deadline, true) === "rate").length, 0);
 
   /* ---------- Foto de perfil: local siempre; en Supabase si hay sesión ---------- */
   const myPhoto = state.profile?.photo || cloud.profile?.avatar_url || null;
@@ -2952,9 +3318,9 @@ export default function App() {
   };
 
   const openShare = useCallback(
-    ({ image, text, filename, event }) => {
+    ({ image, text, filename, event, onInApp, inAppDone }) => {
       if (event) track(event);
-      setSheet({ image, text, filename });
+      setSheet({ image, text, filename, onInApp, inAppDone });
     },
     [track]
   );
@@ -2964,7 +3330,7 @@ export default function App() {
     const headline = runHeadline(t, run.mode, run.outcome, run.time, me.score);
     openShare({
       image: renderRunCard({ t, name, mode: run.mode, outcome: run.outcome, time: run.time, score: me.score, history }),
-      text: `${headline} · XTATS ${fmt(me.score)}\n#XTATS xtats.app`,
+      text: `${headline} · XTATS ${fmt(me.score)}\n#XTATS xtats.us`,
       filename: `xtats-${run.mode}.png`,
     });
   };
@@ -3002,7 +3368,7 @@ export default function App() {
         : "none";
   const meView = { ...me, photo: myPhoto };
 
-  const ctx = useMemo(() => ({ t, pushToast, sfx, track, userId, cloud, reloadCloud, login, logout, myPhoto }), [t, pushToast, sfx, track, userId, cloud, reloadCloud, login, logout, myPhoto]);
+  const ctx = useMemo(() => ({ t, lang, skin, pushToast, sfx, track, userId, cloud, reloadCloud, login, logout, myPhoto }), [t, lang, skin, pushToast, sfx, track, userId, cloud, reloadCloud, login, logout, myPhoto]);
   const climbEnded = run.mode === "climb" && (run.outcome === "elite" || run.outcome === "timeout");
 
   return (
@@ -3062,7 +3428,7 @@ export default function App() {
 
                 {tab === "camera" && <CameraTab name={profile?.name ?? me.name} score={me.score} openShare={openShare} />}
 
-                {tab === "challenges" && <ChallengesTab data={chal} myName={cloud.profile?.name ?? profile?.name ?? me.name} onNew={() => setNewDare(true)} onAction={dareAction} />}
+                {tab === "challenges" && <ChallengesTab data={chal} shares={shares} myName={cloud.profile?.name ?? profile?.name ?? me.name} onNew={() => setNewDare(true)} onAction={dareAction} onPost={darePost} onDeletePost={dareDeletePost} onRate={dareRate} onShare={dareShare} />}
 
                 {tab === "friends" && <FriendsTab state={state} dispatch={dispatch} />}
 

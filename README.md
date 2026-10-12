@@ -118,13 +118,16 @@ Apple y Google exigen, para apps con contenido de usuarios, filtrar contenido of
 
 ## Novedades 0.5
 
-- **Estilos visuales**: Pink (original), Black (neón tipo terminal) y White (minimalista). Se eligen en la hoja de cuenta y se guardan en el navegador. Definidos en `src/skins.js` con variables CSS.
+- **Estilos visuales**: White (minimalista, el inicial), Pink (pastel) y Black (neón tipo terminal). Se eligen en la hoja de cuenta y se guardan en el navegador. Definidos en `src/skins.js` con variables CSS.
 - **Foto de perfil**: se recorta a 320×320 JPEG y se sube al bucket público `avatars` de Supabase Storage (cada persona solo escribe en su carpeta).
 - **Grupos de amigos**: etiquetas privadas (Trabajo, Juegos, Amigos…) en la pestaña Amigos.
 - **Retos (desafíos personalizados)**: se envían a uno o varios amigos o a un grupo, con plazo de 1 h a 7 días.
   - Rechazar o dejarlo vencer sin aceptar **no cambia** el puntaje.
-  - Aceptado y cumplido: 5★ de quien retó. Aceptado y no cumplido: 1★. Se aplica el algoritmo XTATS en el servidor (`private.xtats_rate`).
-  - Máximo 10 retos enviados por día.
+  - Quien acepta sube publicaciones (texto y/o foto) como prueba mientras corre el plazo.
+  - Al terminar el plazo, quien retó ve esas publicaciones y pone de 1 a 5★ (algoritmo XTATS en el servidor, `rate_challenge`). Tiene 3 días; si no califica, el reto se cierra sin efecto.
+  - Ya calificado, el resultado se puede compartir con amigos dentro de la app ("Logros compartidos") o como imagen 9:16 para Instagram/TikTok (menú de compartir del celular; en computador se descarga).
+  - Las fotos de las pruebas van a un bucket privado (`challenge-posts`) y se muestran con URLs firmadas.
+  - Máximo 10 retos enviados por día y 10 publicaciones por reto.
 - **Puntaje social persistente** en `profiles.score`. Nadie puede escribirlo desde el cliente.
 
-Migraciones: `supabase/schema.sql` y luego `supabase/migrations/002_social_score_challenges.sql`.
+Migraciones, en orden: `supabase/schema.sql`, `supabase/migrations/002_social_score_challenges.sql` y `supabase/migrations/003_challenge_posts_rating_sharing.sql`.

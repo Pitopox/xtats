@@ -120,24 +120,41 @@ export const remote = {
   },
 
   /* ---------- Desafíos ---------- */
-  /** Cierra los vencidos y trae enviados y recibidos con las personas involucradas. */
+  /**
+   * Cierra los vencidos y trae enviados y recibidos, con las personas y las
+   * publicaciones que puedo ver (las mías siempre; las de mis retos, al terminar el plazo).
+   */
   async loadChallenges(userId) {
     await supabase.rpc("settle_challenges");
     const challenges = check(await supabase.from("challenges").select("id, sender, title, details, deadline, created_at").order("created_at", { ascending: false }).limit(60));
     if (!challenges.length) return { received: [], sent: [], people: {} };
-    const targets = check(
-      await supabase
-        .from("challenge_targets")
-        .select("challenge_id, recipient, status, score_before, score_after, updated_at")
-        .in("challenge_id", challenges.map((c) => c.id))
-    );
-    const ids = [...new Set([...challenges.map((c) => c.sender), ...targets.map((t) => t.recipient)])];
-    const profiles = check(await supabase.from("profiles").select("id, name, score, avatar_url").in("id", ids));
+    const ids = challenges.map((c) => c.id);
+    const [targets, posts] = await Promise.all([
+      supabase.from("challenge_targets").select("challenge_id, recipient, status, accepted_at, stars, rated_at, shared_at, score_before, score_after, updated_at").in("challenge_id", ids).then(check),
+      supabase.from("challenge_posts").select("id, challenge_id, author, body, photo_path, created_at").in("challenge_id", ids).order("created_at").then(check),
+    ]);
+    // Fotos en bucket privado: URLs firmadas por 1 hora
+    const paths = posts.filter((p) => p.photo_path).map((p) => p.photo_path);
+    const signed = {};
+    if (paths.length) {
+      const { data } = await supabase.storage.from("challenge-posts").createSignedUrls(paths, 3600);
+      (data ?? []).forEach((d) => d.signedUrl && (signed[d.path] = d.signedUrl));
+    }
+    const postsOf = (cid, author) => posts.filter((p) => p.challenge_id === cid && p.author === author).map((p) => ({ ...p, photo: p.photo_path ? signed[p.photo_path] ?? null : null }));
+    const pids = [...new Set([...challenges.map((c) => c.sender), ...targets.map((t) => t.recipient)])];
+    const profiles = check(await supabase.from("profiles").select("id, name, score, avatar_url").in("id", pids));
     const people = Object.fromEntries(profiles.map((p) => [p.id, toPerson(p)]));
-    const withTargets = (c) => ({ ...c, targets: targets.filter((t) => t.challenge_id === c.id) });
     return {
-      received: challenges.filter((c) => c.sender !== userId).map((c) => ({ ...c, mine: targets.find((t) => t.challenge_id === c.id && t.recipient === userId) })).filter((c) => c.mine),
-      sent: challenges.filter((c) => c.sender === userId).map(withTargets),
+      received: challenges
+        .filter((c) => c.sender !== userId)
+        .map((c) => {
+          const mine = targets.find((t) => t.challenge_id === c.id && t.recipient === userId);
+          return mine && { ...c, mine: { ...mine, posts: postsOf(c.id, userId) } };
+        })
+        .filter(Boolean),
+      sent: challenges
+        .filter((c) => c.sender === userId)
+        .map((c) => ({ ...c, targets: targets.filter((t) => t.challenge_id === c.id).map((t) => ({ ...t, posts: postsOf(c.id, t.recipient) })) })),
       people,
     };
   },
@@ -147,11 +164,35 @@ export const remote = {
   async respondChallenge(challengeId, accept) {
     return check(await supabase.rpc("respond_challenge", { p_challenge: challengeId, p_accept: accept }));
   },
-  async claimChallenge(challengeId) {
-    return check(await supabase.rpc("claim_challenge", { p_challenge: challengeId }));
+  /** Publicación de prueba para el reto: texto y/o foto (JPEG ya comprimido). */
+  async addChallengePost(challengeId, userId, body, blob) {
+    let path = null;
+    if (blob) {
+      path = `${challengeId}/${userId}/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.jpg`;
+      check(await supabase.storage.from("challenge-posts").upload(path, blob, { contentType: "image/jpeg" }));
+    }
+    try {
+      return check(await supabase.rpc("add_challenge_post", { p_challenge: challengeId, p_body: body || null, p_photo_path: path }));
+    } catch (err) {
+      if (path) await supabase.storage.from("challenge-posts").remove([path]);
+      throw err;
+    }
   },
-  async resolveChallenge(challengeId, recipientId, success) {
-    return check(await supabase.rpc("resolve_challenge", { p_challenge: challengeId, p_recipient: recipientId, p_success: success }));
+  async deleteChallengePost(post) {
+    check(await supabase.from("challenge_posts").delete().eq("id", post.id));
+    if (post.photo_path) await supabase.storage.from("challenge-posts").remove([post.photo_path]);
+  },
+  /** Quien retó pone de 1 a 5 estrellas cuando terminó el plazo. Devuelve el nuevo puntaje. */
+  async rateChallenge(challengeId, recipientId, stars) {
+    return check(await supabase.rpc("rate_challenge", { p_challenge: challengeId, p_recipient: recipientId, p_stars: stars }));
+  },
+  async shareChallenge(challengeId) {
+    return check(await supabase.rpc("share_challenge_result", { p_challenge: challengeId }));
+  },
+  /** Resultados compartidos por mí y mis amigos. */
+  async loadShares() {
+    const rows = check(await supabase.rpc("friend_shares"));
+    return rows.map((r) => ({ ...r, person: toPerson({ id: r.recipient, name: r.recipient_name, avatar_url: r.recipient_avatar, score: r.score_after }) }));
   },
 
   /* ---------- Juego ---------- */
