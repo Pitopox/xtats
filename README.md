@@ -3,6 +3,12 @@
 **Sonríe. Sobrevive al algoritmo.**
 Sátira jugable sobre vivir bajo calificaciones sociales. React 18 + Tailwind CSS 3 + Vite 5. Español, inglés y portugués.
 
+## En producción
+
+- Sitio: https://xtats.us (también https://xtats.vercel.app)
+- Código: https://github.com/Pitopox/xtats. Cada push a `main` se publica solo en Vercel.
+- Base de datos: Supabase, proyecto **Xtats**.
+
 ## Probarlo
 
 ```bash
@@ -77,7 +83,7 @@ Sin configuración, la app corre en **modo demo**: todo queda en el dispositivo 
 4. Copia tu dirección final (por ejemplo `https://xtats.vercel.app`) y en Supabase, **Authentication → URL Configuration**:
    - **Site URL:** tu dirección de Vercel
    - **Redirect URLs:** tu dirección de Vercel y `http://localhost:5173`
-5. En `index.html`, cambia `https://xtats.app` por tu dirección en las etiquetas `og:` para que la vista previa de los enlaces funcione.
+5. Las etiquetas `og:` de `index.html` ya apuntan a `https://xtats.us`. Si cambias de dominio, actualízalas.
 
 Netlify y Cloudflare Pages funcionan igual: comando de build `npm run build` y carpeta `dist`.
 
