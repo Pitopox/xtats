@@ -76,7 +76,6 @@ const WHITE_SKIN = {
   screen: hex("#ffffff"),
 };
 
-const PALETTES = { pink: PINK, black: BLACK, white: WHITE_SKIN };
 
 function vars(p) {
   const lines = [];
