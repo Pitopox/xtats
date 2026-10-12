@@ -115,3 +115,16 @@ Apple y Google exigen, para apps con contenido de usuarios, filtrar contenido of
 - **Edad mínima de 13 años (COPPA):** la verificación actual usa solo el año de nacimiento. Con servidor, guarda el bloqueo en la cuenta y no solo en el dispositivo.
 - **Moderación:** amplía la lista `INSULTS` o usa un servicio de moderación cuando haya publicaciones visibles entre usuarios reales.
 - **El juego solo puntúa personajes y partidas.** No agregues calificaciones a personas reales: es la diferencia entre una sátira y una app de acoso.
+
+## Novedades 0.5
+
+- **Estilos visuales**: Pink (original), Black (neón tipo terminal) y White (minimalista). Se eligen en la hoja de cuenta y se guardan en el navegador. Definidos en `src/skins.js` con variables CSS.
+- **Foto de perfil**: se recorta a 320×320 JPEG y se sube al bucket público `avatars` de Supabase Storage (cada persona solo escribe en su carpeta).
+- **Grupos de amigos**: etiquetas privadas (Trabajo, Juegos, Amigos…) en la pestaña Amigos.
+- **Retos (desafíos personalizados)**: se envían a uno o varios amigos o a un grupo, con plazo de 1 h a 7 días.
+  - Rechazar o dejarlo vencer sin aceptar **no cambia** el puntaje.
+  - Aceptado y cumplido: 5★ de quien retó. Aceptado y no cumplido: 1★. Se aplica el algoritmo XTATS en el servidor (`private.xtats_rate`).
+  - Máximo 10 retos enviados por día.
+- **Puntaje social persistente** en `profiles.score`. Nadie puede escribirlo desde el cliente.
+
+Migraciones: `supabase/schema.sql` y luego `supabase/migrations/002_social_score_challenges.sql`.

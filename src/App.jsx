@@ -20,6 +20,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { I18N, LANGS } from "./i18n.js";
 import { remote } from "./backend.js";
+import { SKINS, SKIN_CSS } from "./skins.js";
+import { FcGoogle } from "react-icons/fc";
+import { FaFacebook } from "react-icons/fa";
 
 /* =========================================================================
    1. CONFIGURACIÓN
@@ -28,6 +31,8 @@ const STORAGE_KEY = "xtats-v4";
 const LANG_KEY = "xtats-lang";
 const METRICS_KEY = "xtats-metrics";
 const PENDING_KEY = "xtats-pending-name"; // nombre elegido antes de ir a Google/Meta
+const SKIN_KEY = "xtats-skin";
+const DARE_HOURS = [1, 6, 24, 72, 168];
 const MAX_LOG = 20;
 const HISTORY_MAX = 40;
 const SOCIAL_MEMORY = 20;
@@ -423,6 +428,9 @@ function reducer(state, action) {
       return { ...state, records, daily };
     }
 
+    case "SET_PHOTO":
+      return state.profile ? { ...state, profile: { ...state.profile, photo: action.photo } } : state;
+
     case "SINCERE_POST":
       return { ...state, sincere: [{ id: m.id, ts: m.ts, text: action.text }, ...state.sincere].slice(0, 30) };
 
@@ -783,6 +791,36 @@ function composePhoto({ source, sw, sh, mirror, headY, name, score }) {
   return c.toDataURL("image/png");
 }
 
+/** Recorta al centro y comprime una foto de perfil (JPEG cuadrado). */
+function fileToSquareJpeg(file, size = 320) {
+  return new Promise((resolve, reject) => {
+    const src = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const side = Math.min(img.naturalWidth, img.naturalHeight);
+      const c = document.createElement("canvas");
+      c.width = size;
+      c.height = size;
+      c.getContext("2d").drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size);
+      URL.revokeObjectURL(src);
+      resolve(c.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(src);
+      reject(new Error("bad_image"));
+    };
+    img.src = src;
+  });
+}
+
+/** "2 d 4 h", "5 h 12 min", "12 min". */
+function fmtLeft(ms) {
+  const m = Math.max(1, Math.round(ms / 60000));
+  const d = Math.floor(m / 1440);
+  const h = Math.floor((m % 1440) / 60);
+  return d ? `${d} d ${h} h` : h ? `${h} h ${m % 60} min` : `${m} min`;
+}
+
 function dataUrlToBlob(url) {
   const [head, body] = url.split(",");
   const mime = head.match(/:(.*?);/)[1];
@@ -843,7 +881,19 @@ function LangSwitch({ lang, onChange }) {
 }
 
 function Avatar({ person: p, size = "h-10 w-10 text-xl" }) {
-  return <div className={cx(S.avatar, p.gradient, size)}>{p.avatar}</div>;
+  return <div className={cx(S.avatar, p.gradient, size, "overflow-hidden")}>{p.photo ? <img src={p.photo} alt="" className="h-full w-full object-cover" /> : p.avatar}</div>;
+}
+
+/** Botón de acceso con el ícono oficial de Google o Facebook (react-icons). */
+const PROVIDER_ICON = { google: FcGoogle, facebook: FaFacebook };
+function ProviderButton({ provider, label, onClick, disabled, compact }) {
+  const Icon = PROVIDER_ICON[provider];
+  return (
+    <button type="button" disabled={disabled} onClick={onClick} className={cx(S.btn, S.btnGhost, "flex items-center justify-center gap-2", compact && "py-2")}>
+      <Icon aria-hidden="true" className={cx("h-5 w-5 shrink-0", provider === "facebook" && "text-[#1877F2]")} />
+      <span className="truncate">{label}</span>
+    </button>
+  );
 }
 
 function ScorePill({ score }) {
@@ -969,21 +1019,21 @@ function TrendChart({ history, votes }) {
       <svg viewBox={`0 0 ${W} ${H}`} className="h-24 w-full" role="img" aria-label={t.chartAria}>
         <defs>
           <linearGradient id="xt-area" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#f9a8d4" stopOpacity="0.45" />
-            <stop offset="100%" stopColor="#f9a8d4" stopOpacity="0" />
+            <stop offset="0%" style={{ stopColor: "rgb(var(--c-pink-300))", stopOpacity: 0.45 }} />
+            <stop offset="100%" style={{ stopColor: "rgb(var(--c-pink-300))", stopOpacity: 0 }} />
           </linearGradient>
         </defs>
         {[T.elite, T.warning, T.locked].map((v) => (
           <g key={v}>
-            <line x1={P} x2={W - P} y1={y(v)} y2={y(v)} stroke="#cbd5e1" strokeDasharray="3 4" strokeWidth="1" />
-            <text x={W - P} y={y(v) - 2} textAnchor="end" fontSize="8" fill="#94a3b8">
+            <line x1={P} x2={W - P} y1={y(v)} y2={y(v)} style={{ stroke: "rgb(var(--c-slate-300))" }} strokeDasharray="3 4" strokeWidth="1" />
+            <text x={W - P} y={y(v) - 2} textAnchor="end" fontSize="8" style={{ fill: "rgb(var(--c-slate-400))" }}>
               {v.toFixed(1)}
             </text>
           </g>
         ))}
         <path d={area} fill="url(#xt-area)" />
-        <path d={line} fill="none" stroke="#f472b6" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-        <circle cx={x(pts.length - 1)} cy={y(last)} r="3.5" fill="#f472b6" className="nd-blink" />
+        <path d={line} fill="none" style={{ stroke: "rgb(var(--c-pink-400))" }} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <circle cx={x(pts.length - 1)} cy={y(last)} r="3.5" style={{ fill: "rgb(var(--c-pink-400))" }} className="nd-blink" />
       </svg>
       <div className="mt-2 grid grid-cols-3 gap-2 text-center">
         {[
@@ -1114,7 +1164,7 @@ function PrisonScreen({ run, records, onRestart, onSincere, onShare }) {
   const { t } = useApp();
   const showTime = run.mode === "speedrun" || run.mode === "survival";
   return (
-    <div className={cx(S.overlay, "nd-glitch-in z-[53] bg-slate-950 text-slate-300")}>
+    <div data-skin="pink" className={cx(S.overlay, "nd-glitch-in z-[53] bg-slate-950 text-slate-300")}>
       <div className="nd-scanlines pointer-events-none absolute inset-0 opacity-40" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(244,63,94,0.18),transparent_60%)]" />
       <div className="relative z-30 w-full rounded-3xl bg-slate-950/90 px-6 py-8">
@@ -1162,7 +1212,7 @@ function SincereScreen({ posts, onPost, onExit }) {
     setText("");
   };
   return (
-    <div className="absolute inset-0 z-[54] overflow-y-auto bg-white text-neutral-900" style={{ fontFamily: "ui-sans-serif, Helvetica, Arial, sans-serif" }}>
+    <div data-skin="pink" className="absolute inset-0 z-[54] overflow-y-auto bg-white text-neutral-900" style={{ fontFamily: "ui-sans-serif, Helvetica, Arial, sans-serif" }}>
       <div className="space-y-6 px-6 pb-10 pt-12">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-neutral-400">XTATS · 0.1</p>
@@ -1347,32 +1397,90 @@ function HowToSheet({ current, onClose }) {
 }
 
 /** Hoja de cuenta: quién eres, conectar Google/Meta y cerrar sesión. */
-function AccountSheet({ name, email, provider, onClose }) {
-  const { t, userId, login, logout } = useApp();
+function AccountSheet({ name, email, provider, photo, skin, onSkin, onPhoto, onClose }) {
+  const { t, userId, login, logout, cloud, pushToast } = useApp();
+  const [busy, setBusy] = useState(false);
+  const pickPhoto = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    try {
+      await onPhoto(await fileToSquareJpeg(file));
+    } catch {
+      pushToast("toast", "photoFailed", "danger");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const meCard = { avatar: (name || "?").slice(0, 1).toUpperCase(), gradient: "from-pink-200 to-rose-100", photo };
+  const swatches = { pink: ["#fdf7f9", "#f472b6", "#334155"], black: ["#040605", "#39ff14", "#00f0ff"], white: ["#ffffff", "#1d9bf0", "#0f1419"] };
   return (
     <div className="absolute inset-0 z-[57] flex flex-col justify-end bg-slate-900/20 backdrop-blur-[2px]" onClick={onClose}>
-      <div className="nd-sheet space-y-4 rounded-t-[2rem] bg-white p-5 pb-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="nd-sheet max-h-[92%] space-y-4 overflow-y-auto rounded-t-[2rem] bg-white p-5 pb-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mx-auto h-1 w-10 rounded-full bg-slate-200" />
         <p className={S.label}>{t.account.title}</p>
+
         <div className="flex items-center gap-3 rounded-2xl bg-rose-50/60 p-3">
-          <div className={cx(S.avatar, "from-pink-200 to-rose-100", "h-12 w-12 text-lg font-semibold text-pink-500")}>{(name || "?").slice(0, 1).toUpperCase()}</div>
-          <div className="min-w-0">
+          <Avatar person={meCard} size="h-16 w-16 text-2xl font-semibold text-pink-500" />
+          <div className="min-w-0 flex-1">
             <p className="truncate font-medium text-slate-700">{name}</p>
             <p className="truncate text-xs text-slate-400">
-              {userId ? `${t.account.signedInWith(provider === "facebook" ? "Meta" : "Google")}${email ? ` · ${email}` : ""}` : t.account.guest}
+              {userId ? `${t.account.signedInWith(provider === "facebook" ? "Facebook" : "Google")}${email ? ` · ${email}` : ""}` : t.account.guest}
             </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <label className={cx("cursor-pointer rounded-full bg-pink-300 px-3 py-1 text-xs font-medium text-white", busy && "opacity-60")}>
+                {busy ? t.photo.uploading : photo ? t.photo.change : t.photo.add}
+                <input id="xt-photo" type="file" accept="image/*" onChange={pickPhoto} disabled={busy} className="sr-only" />
+              </label>
+              {photo && !busy && (
+                <button type="button" onClick={() => onPhoto(null)} className="rounded-full px-3 py-1 text-xs text-slate-400 ring-1 ring-slate-200 hover:text-rose-500">
+                  {t.photo.remove}
+                </button>
+              )}
+            </div>
           </div>
         </div>
+
+        {userId && cloud.profile?.score != null && (
+          <div className="flex items-center justify-between gap-3 rounded-2xl px-1">
+            <div>
+              <p className={S.label}>{t.social.label}</p>
+              <p className="text-[11px] leading-snug text-slate-400">{t.social.hint}</p>
+            </div>
+            <p className="text-3xl font-extralight tabular-nums text-pink-400">{fmt(cloud.profile.score)}</p>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <p className={S.label}>{t.skins.label}</p>
+          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label={t.skins.label}>
+            {SKINS.map((k) => (
+              <button
+                key={k}
+                type="button"
+                role="radio"
+                aria-checked={skin === k}
+                onClick={() => onSkin(k)}
+                className={cx("space-y-1.5 rounded-2xl p-2 text-left ring-1 transition", skin === k ? "ring-2 ring-pink-400" : "ring-slate-200 hover:ring-pink-200")}
+              >
+                <span className="flex h-10 items-center justify-center gap-1 rounded-xl" style={{ background: swatches[k][0], boxShadow: "inset 0 0 0 1px rgba(127,127,127,.25)" }}>
+                  <span className="h-3 w-3 rounded-full" style={{ background: swatches[k][1] }} />
+                  <span className="h-1.5 w-6 rounded-full" style={{ background: swatches[k][2] }} />
+                </span>
+                <span className="block text-xs font-semibold text-slate-700">{t.skins[k]}</span>
+                <span className="block text-[10px] leading-tight text-slate-400">{t.skins[`${k}Desc`]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {!userId && remote.enabled && (
           <div className="space-y-2">
             <p className="text-xs text-slate-500">{t.account.connect}</p>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => login("google", name)} className={cx(S.btn, S.btnGhost, "py-2")}>
-                Google
-              </button>
-              <button onClick={() => login("facebook", name)} className={cx(S.btn, S.btnGhost, "py-2")}>
-                Meta
-              </button>
+              <ProviderButton provider="google" label="Google" compact onClick={() => login("google", name)} />
+              <ProviderButton provider="facebook" label="Facebook" compact onClick={() => login("facebook", name)} />
             </div>
           </div>
         )}
@@ -1387,6 +1495,388 @@ function AccountSheet({ name, email, provider, onClose }) {
         </button>
       </div>
     </div>
+  );
+}
+
+/* ---------- Retos personalizados ---------- */
+const STATUS_TONE = {
+  pending: "bg-amber-50 text-amber-600",
+  accepted: "bg-pink-100 text-pink-600",
+  claimed: "bg-sky-100 text-sky-700",
+  completed: "bg-pink-300 text-white",
+  failed: "bg-slate-600 text-white",
+  declined: "bg-slate-100 text-slate-400",
+  expired: "bg-slate-100 text-slate-400",
+};
+const UNKNOWN_PERSON = { name: "…", avatar: "?", gradient: "from-slate-100 to-slate-200" };
+
+function TimeLeft({ deadline }) {
+  const { t } = useApp();
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
+  const ms = new Date(deadline).getTime() - now;
+  return <span className={cx("text-[11px] tabular-nums", ms > 0 && ms < 3600000 ? "text-rose-500" : "text-slate-400")}>{ms <= 0 ? t.challenges.ended : t.challenges.left(fmtLeft(ms))}</span>;
+}
+
+function ReceivedCard({ c, sender = UNKNOWN_PERSON, onAction }) {
+  const { t } = useApp();
+  const C = t.challenges;
+  const st = c.mine.status;
+  const open = new Date(c.deadline).getTime() > Date.now();
+  return (
+    <article className={cx(S.card, "space-y-3 p-4")}>
+      <header className="flex items-start gap-3">
+        <Avatar person={sender} size="h-9 w-9 text-base" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[11px] text-slate-400">
+            {C.from(sender.name)}
+            {sender.xscore != null && ` · ★ ${fmt(sender.xscore)}`}
+          </p>
+          <h3 className="break-words text-sm font-semibold text-slate-700">{c.title}</h3>
+        </div>
+        <span className={cx(S.pill, "shrink-0", STATUS_TONE[st])}>{C.status[st]}</span>
+      </header>
+      {c.details && <p className="whitespace-pre-wrap break-words text-sm text-slate-600">{c.details}</p>}
+      <div className="flex items-center justify-between gap-2">
+        <TimeLeft deadline={c.deadline} />
+        {c.mine.score_after != null && (
+          <span className="text-[11px] tabular-nums text-slate-500">
+            ★ {fmt(c.mine.score_before)} → {fmt(c.mine.score_after)}
+          </span>
+        )}
+      </div>
+      {st === "pending" && open && (
+        <>
+          <p className="text-[11px] text-slate-400">{C.acceptHint}</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => onAction("accept", c.id)} className={cx(S.btn, S.btnPrimary, "py-2")}>
+              {C.actions.accept}
+            </button>
+            <button onClick={() => onAction("decline", c.id)} className={cx(S.btn, S.btnGhost, "py-2")}>
+              {C.actions.decline}
+            </button>
+          </div>
+        </>
+      )}
+      {st === "accepted" && open && (
+        <button onClick={() => onAction("claim", c.id)} className={cx(S.btn, S.btnPrimary, "py-2")}>
+          {C.actions.claim}
+        </button>
+      )}
+      {st === "claimed" && <p className="text-[11px] text-slate-400">{C.claimedHint}</p>}
+    </article>
+  );
+}
+
+function SentCard({ c, people, onAction }) {
+  const { t } = useApp();
+  const C = t.challenges;
+  return (
+    <article className={cx(S.card, "space-y-3 p-4")}>
+      <header className="flex items-start justify-between gap-3">
+        <h3 className="min-w-0 break-words text-sm font-semibold text-slate-700">{c.title}</h3>
+        <TimeLeft deadline={c.deadline} />
+      </header>
+      {c.details && <p className="whitespace-pre-wrap break-words text-sm text-slate-600">{c.details}</p>}
+      <ul className="space-y-2">
+        {c.targets.map((tg) => {
+          const p = people[tg.recipient] ?? UNKNOWN_PERSON;
+          return (
+            <li key={tg.recipient} className="space-y-2 rounded-2xl bg-rose-50/40 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <Avatar person={p} size="h-7 w-7 text-sm" />
+                <span className="min-w-0 flex-1 truncate text-sm text-slate-600">{p.name}</span>
+                <span className={cx(S.pill, "shrink-0", STATUS_TONE[tg.status])}>{C.status[tg.status]}</span>
+              </div>
+              {tg.status === "claimed" && (
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => onAction("confirm", c.id, tg.recipient)} className={cx(S.btn, S.btnPrimary, "py-1.5 text-xs")}>
+                    {C.actions.confirm}
+                  </button>
+                  <button onClick={() => onAction("reject", c.id, tg.recipient)} className={cx(S.btn, S.btnGhost, "py-1.5 text-xs")}>
+                    {C.actions.reject}
+                  </button>
+                </div>
+              )}
+              {tg.score_after != null && (
+                <p className="text-right text-[11px] tabular-nums text-slate-400">
+                  ★ {fmt(tg.score_before)} → {fmt(tg.score_after)}
+                </p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </article>
+  );
+}
+
+/** Formulario de nuevo reto: título, detalles, plazo y destinatarios (amigos o grupos). */
+function NewChallengeSheet({ myName, onClose, onSent }) {
+  const { t, cloud, pushToast } = useApp();
+  const C = t.challenges;
+  const [title, setTitle] = useState("");
+  const [details, setDetails] = useState("");
+  const [hours, setHours] = useState(24);
+  const [sel, setSel] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const friends = cloud.friends;
+  const groups = (cloud.groups ?? []).map((g) => ({ ...g, members: g.members.filter((id) => friends.some((f) => f.id === id)) }));
+  const toggle = (id) => setSel((x) => (x.includes(id) ? x.filter((y) => y !== id) : [...x, id]));
+  const toggleGroup = (g) => {
+    const all = g.members.length > 0 && g.members.every((id) => sel.includes(id));
+    setSel((x) => (all ? x.filter((y) => !g.members.includes(y)) : [...new Set([...x, ...g.members])]));
+  };
+  const ready = title.trim().length >= 3 && sel.length > 0 && !busy;
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!ready) return;
+    setBusy(true);
+    try {
+      await remote.createChallenge(title.trim(), details.trim(), hours, sel);
+      pushToast("toast", "dareSent", "good");
+      onSent();
+    } catch (err) {
+      pushToast("toast", String(err?.message ?? "").includes("rate_limited") ? "dareLimit" : "dareFailed", "danger");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const chip = (on) => cx("flex items-center gap-1.5 rounded-full py-1 pl-1 pr-3 text-xs ring-1 transition", on ? "bg-pink-300 text-white ring-pink-300" : "bg-white text-slate-500 ring-slate-200 hover:ring-pink-200");
+  return (
+    <div className="absolute inset-0 z-[58] flex flex-col justify-end bg-slate-900/20 backdrop-blur-[2px]" onClick={onClose}>
+      <form onSubmit={submit} onClick={(e) => e.stopPropagation()} className="nd-sheet max-h-[92%] space-y-4 overflow-y-auto rounded-t-[2rem] bg-white p-5 pb-8 shadow-2xl">
+        <div className="mx-auto h-1 w-10 rounded-full bg-slate-200" />
+        <h2 className="text-lg font-medium text-slate-700">{C.new}</h2>
+        <label className="block space-y-1">
+          <span className={S.label}>{C.form.title}</span>
+          <input id="xt-dare-title" value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} placeholder={C.form.titlePh} className={cx(S.field, "px-4 py-3")} />
+        </label>
+        <label className="block space-y-1">
+          <span className={S.label}>{C.form.details}</span>
+          <textarea id="xt-dare-details" value={details} maxLength={280} rows={2} onChange={(e) => setDetails(e.target.value)} placeholder={C.form.detailsPh} className={cx(S.field, "resize-none p-3")} />
+        </label>
+        <div className="space-y-1.5">
+          <p className={S.label}>{C.form.deadline}</p>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label={C.form.deadline}>
+            {DARE_HOURS.map((h) => (
+              <button key={h} type="button" aria-pressed={hours === h} onClick={() => setHours(h)} className={cx(S.seg, hours === h ? "bg-pink-300 text-white" : "bg-rose-50 text-slate-500")}>
+                {C.hours[h]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className={S.label}>{C.form.to}</p>
+            <span className={S.muted}>{C.form.selected(sel.length)}</span>
+          </div>
+          {groups.length > 0 && (
+            <>
+              <p className="text-[11px] text-slate-400">{C.form.groups}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {groups.map((g) => {
+                  const on = g.members.length > 0 && g.members.every((id) => sel.includes(id));
+                  return (
+                    <button key={g.id} type="button" aria-pressed={on} disabled={!g.members.length} onClick={() => toggleGroup(g)} className={cx(chip(on), "pl-3 disabled:opacity-40")}>
+                      #{g.name} · {g.members.length}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+          <p className="text-[11px] text-slate-400">{C.form.friends}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {friends.map((f) => {
+              const on = sel.includes(f.id);
+              return (
+                <button key={f.id} type="button" aria-pressed={on} onClick={() => toggle(f.id)} className={chip(on)}>
+                  <Avatar person={f} size="h-5 w-5 text-[10px]" />
+                  {f.name}
+                  {f.xscore != null && <span className="opacity-70">★{fmt(f.xscore, 1)}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <p className="rounded-2xl bg-rose-50/60 p-3 text-xs leading-relaxed text-slate-500">{C.form.stakes(myName)}</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={onClose} className={cx(S.btn, S.btnGhost)}>
+            {C.form.cancel}
+          </button>
+          <button type="submit" disabled={!ready} className={cx(S.btn, S.btnPrimary)}>
+            {busy ? "…" : C.form.send}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/** Pestaña Retos: puntaje social, recibidos y enviados. */
+function ChallengesTab({ data, myName, onNew, onAction }) {
+  const { t, userId, cloud, login } = useApp();
+  const C = t.challenges;
+  if (!userId) {
+    return (
+      <section className={cx(S.card, "space-y-3 p-5 text-center")}>
+        <p className="text-3xl text-pink-400">⚑</p>
+        <h2 className="text-base font-medium text-slate-700">{C.title}</h2>
+        <p className="text-sm text-slate-500">{C.intro}</p>
+        <p className={S.muted}>{remote.enabled ? C.needLogin : C.demo}</p>
+        {remote.enabled && (
+          <div className="grid grid-cols-2 gap-2">
+            <ProviderButton provider="google" label="Google" compact onClick={() => login("google", myName)} />
+            <ProviderButton provider="facebook" label="Facebook" compact onClick={() => login("facebook", myName)} />
+          </div>
+        )}
+      </section>
+    );
+  }
+  const score = cloud.profile?.score;
+  const hasFriends = cloud.friends.length > 0;
+  return (
+    <div className="space-y-4">
+      <section className={cx(S.card, "space-y-2 p-5")}>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className={S.label}>{t.social.label}</p>
+            <p className="text-5xl font-extralight tabular-nums text-pink-400">{score != null ? fmt(score) : "—"}</p>
+          </div>
+          <button onClick={onNew} disabled={!hasFriends} className={cx(S.btn, S.btnPrimary, "w-auto px-5")}>
+            {C.new}
+          </button>
+        </div>
+        <p className="text-xs text-slate-500">{t.social.hint}</p>
+        <p className="text-xs text-slate-400">{hasFriends ? C.intro : C.needFriends}</p>
+      </section>
+
+      <section className="space-y-3">
+        <p className={cx(S.label, "px-1")}>{C.received}</p>
+        {data.received.length === 0 ? <p className={cx(S.muted, "px-1")}>{C.emptyReceived}</p> : data.received.map((c) => <ReceivedCard key={c.id} c={c} sender={data.people[c.sender]} onAction={onAction} />)}
+      </section>
+
+      <section className="space-y-3">
+        <p className={cx(S.label, "px-1")}>{C.sent}</p>
+        {data.sent.length === 0 ? <p className={cx(S.muted, "px-1")}>{C.emptySent}</p> : data.sent.map((c) => <SentCard key={c.id} c={c} people={data.people} onAction={onAction} />)}
+      </section>
+    </div>
+  );
+}
+
+/** Grupos de amigos con etiquetas (solo con sesión). */
+function GroupsSection({ friends }) {
+  const { t, cloud, userId, reloadCloud, pushToast } = useApp();
+  const [name, setName] = useState("");
+  const [open, setOpen] = useState(null);
+  const [confirm, setConfirm] = useState(null);
+  const groups = cloud.groups ?? [];
+  const fail = () => pushToast("toast", "groupFailed", "danger");
+  const create = async (e) => {
+    e.preventDefault();
+    const n = name.trim();
+    if (!n) return;
+    try {
+      const g = await remote.createGroup(userId, n);
+      setName("");
+      setOpen(g.id);
+      await reloadCloud();
+    } catch {
+      fail();
+    }
+  };
+  const toggle = async (g, fid) => {
+    try {
+      await remote.setGroupMember(g.id, fid, !g.members.includes(fid));
+      await reloadCloud();
+    } catch {
+      fail();
+    }
+  };
+  const remove = async (g) => {
+    if (confirm !== g.id) return setConfirm(g.id);
+    try {
+      await remote.deleteGroup(g.id);
+      setConfirm(null);
+      await reloadCloud();
+    } catch {
+      fail();
+    }
+  };
+  return (
+    <section className={cx(S.card, "space-y-3 p-4")}>
+      <p className={S.label}>{t.groups.label}</p>
+      <p className={S.muted}>{t.groups.desc}</p>
+      {friends.length === 0 ? (
+        <p className={S.muted}>{t.groups.needFriends}</p>
+      ) : (
+        <>
+          <form onSubmit={create} className="flex gap-2">
+            <label htmlFor="xt-group-name" className="sr-only">
+              {t.groups.newPh}
+            </label>
+            <input id="xt-group-name" value={name} maxLength={24} onChange={(e) => setName(e.target.value)} placeholder={t.groups.newPh} className={cx(S.field, "min-w-0 flex-1 px-3 py-2")} />
+            <button type="submit" disabled={!name.trim()} className={cx(S.btn, S.btnPrimary, "w-auto px-4 py-2")}>
+              {t.groups.create}
+            </button>
+          </form>
+          <div className="flex flex-wrap gap-1.5">
+            {t.groups.suggestions
+              .filter((sg) => !groups.some((g) => g.name.toLowerCase() === sg.toLowerCase()))
+              .map((sg) => (
+                <button key={sg} type="button" onClick={() => setName(sg)} className="rounded-full bg-rose-50 px-2.5 py-1 text-xs text-slate-500 ring-1 ring-pink-100 hover:text-pink-500">
+                  #{sg}
+                </button>
+              ))}
+          </div>
+          {groups.length === 0 && <p className={S.muted}>{t.groups.empty}</p>}
+          <ul className="space-y-2">
+            {groups.map((g) => (
+              <li key={g.id} className="rounded-2xl bg-rose-50/50 p-3 ring-1 ring-pink-100">
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setOpen(open === g.id ? null : g.id)} aria-expanded={open === g.id} className="min-w-0 flex-1 text-left">
+                    <span className="text-sm font-medium text-slate-700">#{g.name}</span>
+                    <span className="ml-2 text-xs text-slate-400">{t.groups.members(g.members.length)}</span>
+                  </button>
+                  <div className="flex -space-x-2">
+                    {g.members.slice(0, 4).map((id) => {
+                      const f = friends.find((x) => x.id === id);
+                      return f ? <Avatar key={id} person={f} size="h-6 w-6 text-[10px]" /> : null;
+                    })}
+                  </div>
+                  <button type="button" onClick={() => remove(g)} className={cx("text-xs", confirm === g.id ? "font-semibold text-rose-500" : "text-slate-400 hover:text-rose-500")}>
+                    {confirm === g.id ? t.groups.confirmRemove : t.groups.remove}
+                  </button>
+                </div>
+                {open === g.id && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {friends.map((f) => {
+                      const on = g.members.includes(f.id);
+                      return (
+                        <button
+                          key={f.id}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => toggle(g, f.id)}
+                          className={cx("flex items-center gap-1.5 rounded-full py-1 pl-1 pr-3 text-xs ring-1 transition", on ? "bg-pink-300 text-white ring-pink-300" : "bg-white text-slate-500 ring-slate-200")}
+                        >
+                          <Avatar person={f} size="h-5 w-5 text-[10px]" />
+                          {f.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -1780,7 +2270,7 @@ function CameraTab({ name, score, openShare }) {
 
 /** Amigos: grupo, récords, reto de hoy y bloqueados. Con sesión usa Supabase; sin ella, datos de demo. */
 function FriendsTab({ state, dispatch }) {
-  const { t, track, pushToast, userId, cloud, reloadCloud, login, logout } = useApp();
+  const { t, track, pushToast, userId, cloud, reloadCloud, login, logout, myPhoto } = useApp();
   const [mode, setMode] = useState("speedrun");
   const [code, setCode] = useState("");
   const live = !!userId;
@@ -1791,7 +2281,7 @@ function FriendsTab({ state, dispatch }) {
   const today = live ? cloud.friends.filter((f) => f.score != null) : demoToday;
   const inviteCode = live ? cloud.profile?.invite_code ?? "…" : state.inviteCode;
 
-  const rows = [...friends.map((f) => ({ ...f, value: f.records[mode] })), { id: "me", name: t.friends.you, avatar: "⭐", gradient: "from-pink-200 to-rose-100", value: state.records[mode], me: true }].sort((a, b) => {
+  const rows = [...friends.map((f) => ({ ...f, value: f.records[mode] })), { id: "me", name: t.friends.you, avatar: "⭐", gradient: "from-pink-200 to-rose-100", photo: myPhoto, value: state.records[mode], me: true }].sort((a, b) => {
     if (a.value == null) return 1;
     if (b.value == null) return -1;
     return LOWER_IS_BETTER[mode] ? a.value - b.value : b.value - a.value;
@@ -1855,18 +2345,16 @@ function FriendsTab({ state, dispatch }) {
           <div className="space-y-2">
             <p className="text-xs text-slate-500">{t.friends.connect}</p>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => login("google", state.profile?.name ?? INITIAL_ME.name)} className={cx(S.btn, S.btnGhost, "py-2")}>
-                Google
-              </button>
-              <button onClick={() => login("facebook", state.profile?.name ?? INITIAL_ME.name)} className={cx(S.btn, S.btnGhost, "py-2")}>
-                Meta
-              </button>
+              <ProviderButton provider="google" label="Google" compact onClick={() => login("google", state.profile?.name ?? INITIAL_ME.name)} />
+              <ProviderButton provider="facebook" label="Facebook" compact onClick={() => login("facebook", state.profile?.name ?? INITIAL_ME.name)} />
             </div>
           </div>
         ) : (
           <p className="text-[10px] text-slate-400">{t.friends.demo}</p>
         )}
       </section>
+
+      {live && <GroupsSection friends={friends} />}
 
       <section className={cx(S.card, "space-y-3 p-4")}>
         <p className={S.label}>{t.friends.leaderboard}</p>
@@ -1894,7 +2382,7 @@ function FriendsTab({ state, dispatch }) {
         <p className={S.label}>{t.friends.today}</p>
         {!myDaily?.done && <p className={S.muted}>{t.friends.notPlayed}</p>}
         <ul className="space-y-1.5">
-          {[...today, ...(myDaily?.done ? [{ id: "me", name: t.friends.you, avatar: "⭐", gradient: "from-pink-200 to-rose-100", score: myDaily.score, me: true }] : [])]
+          {[...today, ...(myDaily?.done ? [{ id: "me", name: t.friends.you, avatar: "⭐", gradient: "from-pink-200 to-rose-100", photo: myPhoto, score: myDaily.score, me: true }] : [])]
             .sort((a, b) => b.score - a.score)
             .map((f) => (
               <li key={f.id} className={cx("flex items-center gap-3 rounded-2xl px-3 py-1.5", f.me ? "bg-pink-50 ring-1 ring-pink-200" : "")}>
@@ -1992,9 +2480,7 @@ function Onboarding({ lang, setLang, onDone, onUnderage }) {
             ["google", t.onboarding.google],
             ["facebook", t.onboarding.meta],
           ].map(([provider, label]) => (
-            <button key={provider} type="button" disabled={!remote.enabled || !ready} onClick={() => social(provider)} className={cx(S.btn, S.btnGhost)}>
-              {label}
-            </button>
+            <ProviderButton key={provider} provider={provider} label={label} disabled={!remote.enabled || !ready} onClick={() => social(provider)} />
           ))}
           {!remote.enabled && <p className="text-center text-[10px] text-slate-400">{t.onboarding.needsServer}</p>}
         </div>
@@ -2018,21 +2504,25 @@ function Underage({ onWipe }) {
   );
 }
 
-function TabBar({ tab, setTab }) {
+function TabBar({ tab, setTab, badges = {} }) {
   const { t } = useApp();
   const items = [
     ["today", "◐"],
     ["play", "★"],
     ["camera", "◎"],
+    ["challenges", "⚑"],
     ["friends", "◇"],
   ];
   return (
     <nav className="absolute inset-x-0 bottom-0 z-[45] border-t border-pink-100 bg-white/85 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur" aria-label="XTATS">
-      <ul className="grid grid-cols-4">
+      <ul className="grid grid-cols-5">
         {items.map(([id, icon]) => (
           <li key={id}>
             <button type="button" onClick={() => setTab(id)} aria-current={tab === id ? "page" : undefined} className={cx("flex w-full flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition", tab === id ? "text-pink-500" : "text-slate-400 hover:text-slate-600")}>
-              <span className="text-lg leading-none">{icon}</span>
+              <span className="relative text-lg leading-none">
+                {icon}
+                {badges[id] > 0 && <span className="absolute -right-2.5 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[9px] font-bold leading-none text-white">{badges[id]}</span>}
+              </span>
               {t.tabs[id]}
             </button>
           </li>
@@ -2074,7 +2564,17 @@ export default function App() {
   const [howto, setHowto] = useState(false);
   const [metricsValues, track] = useMetrics();
   const [session, setSession] = useState(null);
-  const [cloud, setCloud] = useState({ profile: null, friends: [], loading: false });
+  const [cloud, setCloud] = useState({ profile: null, friends: [], groups: [], loading: false });
+  const [chal, setChal] = useState({ received: [], sent: [], people: {}, loading: false });
+  const [newDare, setNewDare] = useState(false);
+  const [skin, setSkin] = useState(() => {
+    try {
+      const v = localStorage.getItem(SKIN_KEY);
+      return SKINS.includes(v) ? v : "pink";
+    } catch {
+      return "pink";
+    }
+  });
 
   const t = I18N[lang];
   const soundRef = useRef(soundOn);
@@ -2134,7 +2634,7 @@ export default function App() {
   }, []);
 
   const reloadCloud = useCallback(async () => {
-    if (!userId) return setCloud({ profile: null, friends: [], loading: false });
+    if (!userId) return setCloud({ profile: null, friends: [], groups: [], loading: false });
     setCloud((c) => ({ ...c, loading: true }));
     try {
       let profile = await remote.getProfile(userId);
@@ -2160,8 +2660,8 @@ export default function App() {
       if (!profileRef.current) dispatch({ type: "ONBOARD", name: profile.name });
       const mine = await remote.loadMine(userId, dateKey());
       dispatch({ type: "MERGE_REMOTE", day: dateKey(), ...mine });
-      const friends = await remote.loadFriends(userId, dateKey());
-      setCloud({ profile, friends, loading: false });
+      const [friends, groups] = await Promise.all([remote.loadFriends(userId, dateKey()), remote.loadGroups()]);
+      setCloud({ profile, friends, groups, loading: false });
     } catch {
       setCloud((c) => ({ ...c, loading: false }));
     }
@@ -2197,6 +2697,7 @@ export default function App() {
     }
     setSession(null);
     setAccount(false);
+    setNewDare(false);
     setSincere(false);
     setPicker(false);
     setTab("play");
@@ -2211,6 +2712,72 @@ export default function App() {
   useEffect(() => {
     if (userId && todayEntry?.done) remote.submitDaily(userId, dateKey(), todayEntry.score, todayEntry.grid).catch(() => {});
   }, [userId, todayEntry?.done]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ---------- Estilo visual ---------- */
+  useEffect(() => {
+    try {
+      localStorage.setItem(SKIN_KEY, skin);
+    } catch {
+      /* sin almacenamiento */
+    }
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", { pink: "#fbcfe8", black: "#040605", white: "#ffffff" }[skin]);
+  }, [skin]);
+
+  /* ---------- Retos: cargar, refrescar cada 30 s en la pestaña y responder ---------- */
+  const reloadChallenges = useCallback(async () => {
+    if (!userId) return setChal({ received: [], sent: [], people: {}, loading: false });
+    setChal((c) => ({ ...c, loading: true }));
+    try {
+      const d = await remote.loadChallenges(userId);
+      setChal({ ...d, loading: false });
+    } catch {
+      setChal((c) => ({ ...c, loading: false }));
+    }
+  }, [userId]);
+  useEffect(() => {
+    reloadChallenges();
+  }, [reloadChallenges]);
+  useEffect(() => {
+    if (tab !== "challenges" || !userId) return;
+    reloadChallenges();
+    reloadCloud();
+    const id = setInterval(reloadChallenges, 30000);
+    return () => clearInterval(id);
+  }, [tab, userId, reloadChallenges, reloadCloud]);
+
+  const dareAction = async (kind, id, recipient) => {
+    try {
+      if (kind === "accept" || kind === "decline") await remote.respondChallenge(id, kind === "accept");
+      else if (kind === "claim") await remote.claimChallenge(id);
+      else await remote.resolveChallenge(id, recipient, kind === "confirm");
+      pushToast("toast", { accept: "dareAccepted", decline: "dareDeclined", claim: "dareClaimed", confirm: "dareResolved", reject: "dareResolved" }[kind], "good");
+      if (kind === "accept" || kind === "claim") sfx.playHarp();
+    } catch {
+      pushToast("toast", "dareFailed", "danger");
+    }
+    reloadChallenges();
+    reloadCloud();
+  };
+  const pendingDares = chal.received.filter((c) => c.mine.status === "pending" && new Date(c.deadline).getTime() > Date.now()).length;
+
+  /* ---------- Foto de perfil: local siempre; en Supabase si hay sesión ---------- */
+  const myPhoto = state.profile?.photo || cloud.profile?.avatar_url || null;
+  const setPhoto = async (dataUrl) => {
+    dispatch({ type: "SET_PHOTO", photo: dataUrl });
+    if (!userId) return pushToast("toast", "photoSaved", "good");
+    try {
+      if (dataUrl) {
+        const avatarUrl = await remote.uploadAvatar(userId, dataUrlToBlob(dataUrl));
+        setCloud((c) => ({ ...c, profile: { ...c.profile, avatar_url: avatarUrl } }));
+      } else {
+        await remote.removeAvatar(userId);
+        setCloud((c) => ({ ...c, profile: { ...c.profile, avatar_url: null } }));
+      }
+      pushToast("toast", "photoSaved", "good");
+    } catch {
+      pushToast("toast", "photoFailed", "danger");
+    }
+  };
 
   const receive = useCallback(
     (rater, stars, reason) => {
@@ -2422,26 +2989,38 @@ export default function App() {
 
   /* ---------- Filtro estético ---------- */
   const noFilter = (inPrison && onboarded) || sincere;
-  const dreamFilter = noFilter ? "none" : isWarning && tab === "play" ? "brightness(0.95) contrast(0.88) saturate(0.45) sepia(0.06)" : "brightness(1.08) contrast(0.9) saturate(0.85) sepia(0.08) hue-rotate(-6deg)";
+  const isPink = skin === "pink";
+  const warnPlay = isWarning && tab === "play";
+  const dreamFilter = noFilter
+    ? "none"
+    : isPink
+      ? warnPlay
+        ? "brightness(0.95) contrast(0.88) saturate(0.45) sepia(0.06)"
+        : "brightness(1.08) contrast(0.9) saturate(0.85) sepia(0.08) hue-rotate(-6deg)"
+      : warnPlay
+        ? "grayscale(0.45)"
+        : "none";
+  const meView = { ...me, photo: myPhoto };
 
-  const ctx = useMemo(() => ({ t, pushToast, sfx, track, userId, cloud, reloadCloud, login, logout }), [t, pushToast, sfx, track, userId, cloud, reloadCloud, login, logout]);
+  const ctx = useMemo(() => ({ t, pushToast, sfx, track, userId, cloud, reloadCloud, login, logout, myPhoto }), [t, pushToast, sfx, track, userId, cloud, reloadCloud, login, logout, myPhoto]);
   const climbEnded = run.mode === "climb" && (run.outcome === "elite" || run.outcome === "timeout");
 
   return (
     <AppCtx.Provider value={ctx}>
-      <div className="min-h-[100dvh] w-full bg-gradient-to-br from-rose-50 via-white to-slate-100 sm:flex sm:items-center sm:justify-center sm:p-4" style={{ fontFamily: FONT }}>
+      <div data-skin={skin} className="min-h-[100dvh] w-full bg-gradient-to-br from-rose-50 via-white to-slate-100 sm:flex sm:items-center sm:justify-center sm:p-4" style={isPink ? { fontFamily: FONT } : undefined}>
         <style>{GLOBAL_CSS}</style>
 
         {/* En celulares reales ocupa toda la pantalla; en escritorio se ve el marco del teléfono */}
-        <div className="relative h-[100dvh] w-full sm:h-[820px] sm:w-[390px] sm:max-w-full sm:rounded-[3rem] sm:bg-slate-800 sm:p-3 sm:shadow-2xl sm:shadow-slate-400/40">
-          <div className="absolute left-1/2 top-3 z-[60] hidden h-7 w-32 -translate-x-1/2 rounded-b-2xl bg-slate-800 sm:block" />
+        <div className="relative h-[100dvh] w-full sm:h-[820px] sm:w-[390px] sm:max-w-full sm:rounded-[3rem] sm:bg-[#111827] sm:p-3 sm:shadow-2xl sm:shadow-slate-400/40">
+          <div className="absolute left-1/2 top-3 z-[60] hidden h-7 w-32 -translate-x-1/2 rounded-b-2xl bg-[#111827] sm:block" />
 
           <div
             onPointerDownCapture={onAnyPointer}
-            className={cx("relative h-full w-full overflow-hidden bg-[#fdf7f9] sm:rounded-[2.4rem]", anxious && "nd-shake")}
+            className={cx("relative h-full w-full overflow-hidden bg-screen sm:rounded-[2.4rem]", anxious && "nd-shake")}
             style={{ filter: dreamFilter, transition: "filter 1.2s ease" }}
           >
-            {!noFilter && (
+            {!noFilter && skin === "black" && <div className="nd-scanlines pointer-events-none absolute inset-0 z-40 opacity-25" />}
+            {!noFilter && isPink && (
               <>
                 <div className="pointer-events-none absolute inset-0 z-40 bg-gradient-to-b from-white/30 via-pink-50/10 to-white/25 mix-blend-screen" />
                 <div className="pointer-events-none absolute inset-0 z-40 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.35),transparent_60%)]" />
@@ -2459,9 +3038,9 @@ export default function App() {
                       type="button"
                       onClick={() => setAccount(true)}
                       aria-label={t.account.open}
-                      className={cx("grid h-7 w-7 place-items-center rounded-full bg-gradient-to-br from-pink-200 to-rose-100 text-[11px] font-semibold text-pink-500", userId ? "ring-2 ring-pink-300" : "ring-1 ring-slate-200")}
+                      className={cx("grid h-7 w-7 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-pink-200 to-rose-100 text-[11px] font-semibold text-pink-500", userId ? "ring-2 ring-pink-300" : "ring-1 ring-slate-200")}
                     >
-                      {(profile?.name ?? "?").slice(0, 1).toUpperCase()}
+                      {myPhoto ? <img src={myPhoto} alt="" className="h-full w-full object-cover" /> : (profile?.name ?? "?").slice(0, 1).toUpperCase()}
                     </button>
                   )}
                   <button onClick={() => setSoundOn((s) => !s)} className="text-sm" aria-label={t.soundAria} aria-pressed={soundOn}>
@@ -2483,6 +3062,8 @@ export default function App() {
 
                 {tab === "camera" && <CameraTab name={profile?.name ?? me.name} score={me.score} openShare={openShare} />}
 
+                {tab === "challenges" && <ChallengesTab data={chal} myName={cloud.profile?.name ?? profile?.name ?? me.name} onNew={() => setNewDare(true)} onAction={dareAction} />}
+
                 {tab === "friends" && <FriendsTab state={state} dispatch={dispatch} />}
 
                 {tab === "play" && (
@@ -2494,7 +3075,7 @@ export default function App() {
                         ↗ {t.share.share}
                       </button>
                       <div className="flex justify-center">
-                        <Avatar person={me} size="h-20 w-20 text-4xl" />
+                        <Avatar person={meView} size="h-20 w-20 text-4xl" />
                       </div>
                       <h1 className="mt-3 font-medium text-slate-700">{me.name}</h1>
                       <p className={S.muted}>
@@ -2533,7 +3114,7 @@ export default function App() {
                       {feed.length === 0 && <p className={cx(S.muted, "py-6 text-center")}>{t.noMatch(query)}</p>}
                       {feed.map((post) =>
                         post.isOwn ? (
-                          <PostCard key={post.id} post={post} text={post.text} author={me} isOwn time={new Date(post.ts).toLocaleTimeString(t.locale, { hour: "2-digit", minute: "2-digit" })} />
+                          <PostCard key={post.id} post={post} text={post.text} author={meView} isOwn time={new Date(post.ts).toLocaleTimeString(t.locale, { hour: "2-digit", minute: "2-digit" })} />
                         ) : (
                           <PostCard
                             key={post.id}
@@ -2567,7 +3148,7 @@ export default function App() {
               </main>
             </div>
 
-            {onboarded && <TabBar tab={tab} setTab={setTab} />}
+            {onboarded && <TabBar tab={tab} setTab={setTab} badges={{ challenges: pendingDares }} />}
             <Toasts items={toasts} />
             {showElite && !isLocked && tab === "play" && <SuccessOverlay />}
             {onboarded && isLocked && !inPrison && runActive && <LockScreen score={me.score} />}
@@ -2579,7 +3160,21 @@ export default function App() {
                 name={cloud.profile?.name ?? profile?.name ?? me.name}
                 email={session?.user?.email}
                 provider={session?.user?.app_metadata?.provider}
+                photo={myPhoto}
+                skin={skin}
+                onSkin={setSkin}
+                onPhoto={setPhoto}
                 onClose={() => setAccount(false)}
+              />
+            )}
+            {newDare && (
+              <NewChallengeSheet
+                myName={cloud.profile?.name ?? profile?.name ?? me.name}
+                onClose={() => setNewDare(false)}
+                onSent={() => {
+                  setNewDare(false);
+                  reloadChallenges();
+                }}
               />
             )}
             {picker && <ModePicker records={records} onPick={startRun} onClose={() => setPicker(false)} onHelp={() => setHowto(true)} />}
@@ -2598,7 +3193,8 @@ export default function App() {
    CSS GLOBAL
    ========================================================================= */
 const GLOBAL_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap');
+${SKIN_CSS}
 @keyframes nd-pop { 0% { transform: scale(.85); opacity: 0 } 60% { transform: scale(1.03); opacity: 1 } 100% { transform: scale(1) } }
 @keyframes nd-shake { 0%,100% { transform: translateX(0) } 20% { transform: translateX(-6px) } 40% { transform: translateX(6px) } 60% { transform: translateX(-4px) } 80% { transform: translateX(4px) } }
 @keyframes nd-glow { 0% { text-shadow: 0 0 0 rgba(244,114,182,0); transform: scale(1) } 40% { text-shadow: 0 0 24px rgba(244,114,182,.7); transform: scale(1.06) } 100% { text-shadow: 0 0 0 rgba(244,114,182,0); transform: scale(1) } }
