@@ -19,7 +19,21 @@ describe("App (modo demo)", () => {
     fireEvent.click(document.getElementById("xt-satire"));
     await act(async () => fireEvent.click(screen.getByText(t.onboarding.start)));
     expect(screen.getAllByText("4.10").length).toBeGreaterThan(0);
-    expect(screen.getByText(t.howto.title)).toBeTruthy();
+    expect(screen.getByText(t.welcome.title("Ana"))).toBeTruthy();
+    // Desde la bienvenida se llega a las reglas completas
+    fireEvent.click(screen.getByText(t.welcome.rules));
+    expect(screen.getByText(t.howto.basicsLabel)).toBeTruthy();
+  });
+
+  it("cierra las hojas con Escape", async () => {
+    render(<App />);
+    fireEvent.change(document.getElementById("xt-name"), { target: { value: "Ana" } });
+    fireEvent.change(document.getElementById("xt-birth"), { target: { value: "1995" } });
+    fireEvent.click(document.getElementById("xt-satire"));
+    await act(async () => fireEvent.click(screen.getByText(t.onboarding.start)));
+    expect(screen.queryByRole("dialog")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("bloquea a menores de 13 años", async () => {
@@ -40,7 +54,7 @@ describe("App (modo demo)", () => {
         fireEvent.change(document.getElementById("xt-birth"), { target: { value: "1995" } });
         fireEvent.click(document.getElementById("xt-satire"));
         await act(async () => fireEvent.click(screen.getByText(t.onboarding.start)));
-        fireEvent.click(screen.getByText(t.howto.close));
+        fireEvent.click(screen.getByText(t.welcome.start));
       }
       for (const tab of ["today", "camera", "challenges", "friends", "play"]) {
         await act(async () => fireEvent.click(screen.getByText(t.tabs[tab])));

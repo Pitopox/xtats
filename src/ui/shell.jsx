@@ -1,5 +1,6 @@
 /** Inicio, verificación de edad y barra de pestañas. */
 import { useState } from "react";
+import { FiCamera, FiFlag, FiStar, FiSun, FiUsers } from "react-icons/fi";
 import { remote } from "../backend.js";
 import { MIN_AGE } from "../game/config.js";
 import { cx } from "../game/engine.js";
@@ -92,26 +93,29 @@ export function Underage({ onWipe }) {
 export function TabBar({ tab, setTab, badges = {} }) {
   const { t } = useApp();
   const items = [
-    ["today", "◐"],
-    ["play", "★"],
-    ["camera", "◎"],
-    ["challenges", "⚑"],
-    ["friends", "◇"],
+    ["today", FiSun],
+    ["play", FiStar],
+    ["camera", FiCamera],
+    ["challenges", FiFlag],
+    ["friends", FiUsers],
   ];
   return (
-    <nav className="absolute inset-x-0 bottom-0 z-[45] border-t border-pink-100 bg-white/85 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur" aria-label="XTATS">
-      <ul className="grid grid-cols-5">
-        {items.map(([id, icon]) => (
-          <li key={id}>
-            <button type="button" onClick={() => setTab(id)} aria-current={tab === id ? "page" : undefined} className={cx("flex w-full flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition", tab === id ? "text-pink-500" : "text-slate-400 hover:text-slate-600")}>
-              <span className="relative text-lg leading-none">
-                {icon}
-                {badges[id] > 0 && <span className="absolute -right-2.5 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[9px] font-bold leading-none text-white">{badges[id]}</span>}
-              </span>
-              {t.tabs[id]}
-            </button>
-          </li>
-        ))}
+    <nav className="absolute inset-x-0 bottom-0 z-[45] border-t border-slate-200/70 bg-white/95 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur" aria-label="XTATS">
+      <ul className="grid grid-cols-5 px-1">
+        {items.map(([id, Icon]) => {
+          const on = tab === id;
+          return (
+            <li key={id}>
+              <button type="button" onClick={() => setTab(id)} aria-current={on ? "page" : undefined} className={cx("flex w-full flex-col items-center gap-1 pb-2 pt-2 text-[11px] font-medium transition", on ? "text-pink-500" : "text-slate-500 hover:text-slate-700")}>
+                <span className={cx("relative grid h-7 w-12 place-items-center rounded-full transition", on && "bg-pink-100")}>
+                  <Icon aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={on ? 2.2 : 1.8} />
+                  {badges[id] > 0 && <span className="absolute -right-0.5 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[9px] font-bold leading-none text-white">{badges[id]}</span>}
+                </span>
+                {t.tabs[id]}
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </nav>
   );

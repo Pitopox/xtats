@@ -33,15 +33,17 @@ export function PostCard({ post, text, author, time, myRating, onRate, isOwn, on
           </button>
         </div>
       )}
-      <div className={cx("mx-4 grid aspect-[4/3] max-w-full place-items-center rounded-2xl bg-gradient-to-br text-7xl", post.gradient)}>{post.emoji}</div>
-      <p className="px-4 pt-3 text-sm text-slate-600">{text}</p>
-      <footer className="flex items-center justify-between px-4 py-3">
+      <div className={cx("mx-4 grid aspect-[16/9] max-w-full place-items-center rounded-2xl bg-gradient-to-br text-6xl", post.gradient)} aria-hidden="true">
+        {post.emoji}
+      </div>
+      <p className="px-4 pt-3 text-sm leading-relaxed text-slate-600">{text}</p>
+      <footer className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
         {isOwn ? (
-          <span className={S.muted}>{t.ownPost}</span>
+          <span className={cx(S.muted, "py-2")}>{t.ownPost}</span>
         ) : (
           <>
             <StarRating value={myRating} disabled={!!myRating} onRate={onRate} />
-            <span className={S.muted}>{myRating ? t.rated : t.rate}</span>
+            <span className={cx("text-right text-xs", myRating ? "font-medium text-pink-500" : "text-slate-500")}>{myRating ? t.youRated(myRating) : t.rate}</span>
           </>
         )}
       </footer>
@@ -182,7 +184,7 @@ export function ActivityLog({ entries }) {
               <span className={cx("mt-1.5 h-2 w-2 shrink-0 rounded-full", dot[e.tone])} />
               <div className="min-w-0">
                 <p className={cx("text-xs leading-snug", e.tone === "down" ? "text-slate-500" : "text-slate-600")}>{logText(e, t)}</p>
-                <p className="mt-0.5 text-[10px] text-slate-300">{new Date(e.ts).toLocaleTimeString(t.locale)}</p>
+                <p className="mt-0.5 text-[10px] text-slate-400">{new Date(e.ts).toLocaleTimeString(t.locale)}</p>
               </div>
             </li>
           ))}
@@ -196,10 +198,10 @@ export function Toasts({ items }) {
   const { t } = useApp();
   const tone = { alert: "bg-white/95 text-slate-600 ring-pink-100", danger: "bg-slate-700/95 text-white ring-slate-600", good: "bg-pink-50/95 text-pink-500 ring-pink-200" };
   return (
-    <div className="pointer-events-none absolute inset-x-3 top-11 z-[56] space-y-2" aria-live="polite">
+    <div className="pointer-events-none absolute inset-x-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] z-[56] flex flex-col-reverse gap-2" aria-live="polite">
       {items.map((x) => (
-        <div key={x.id} className={cx("nd-toast rounded-2xl px-4 py-2.5 text-xs shadow-lg ring-1 backdrop-blur", tone[x.tone])}>
-          <span className="font-semibold tracking-wide">[XTATS Alert] </span>
+        <div key={x.id} className={cx("nd-sheet rounded-2xl px-4 py-2.5 text-xs leading-snug shadow-lg ring-1 backdrop-blur", tone[x.tone])}>
+          <span className="font-semibold tracking-wide">XTATS · </span>
           {t[x.group][x.key]}
         </div>
       ))}
@@ -382,12 +384,48 @@ export function ModeBar({ run, records, onChange, onHelp }) {
         </p>
       </div>
       {clock && <span className={cx("font-mono text-lg tabular-nums", limit && limit - elapsed < 20000 ? "nd-blink text-rose-400" : "text-slate-600")}>{clock}</span>}
-      <button type="button" onClick={onHelp} aria-label={t.howto.open} title={t.howto.open} className="grid h-7 w-7 place-items-center rounded-full bg-white text-xs font-semibold text-slate-400 ring-1 ring-slate-200 hover:text-pink-500">
+      <button type="button" onClick={onHelp} aria-label={t.howto.open} title={t.howto.open} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-sm font-semibold text-slate-500 ring-1 ring-slate-200 hover:text-pink-500">
         ?
       </button>
-      <button type="button" onClick={onChange} className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-medium text-pink-500 ring-1 ring-pink-100 hover:bg-pink-100">
+      <button type="button" onClick={onChange} className="shrink-0 rounded-full bg-rose-50 px-3 py-2 text-xs font-medium text-pink-500 ring-1 ring-pink-100 hover:bg-pink-100">
         {t.modeBar.change}
       </button>
     </section>
+  );
+}
+
+/**
+ * Las dos acciones principales con una línea que explica qué hace cada una,
+ * para que nadie tenga que adivinar.
+ */
+export function ScoreActions({ onRandom, onComplain, complaining, disabled }) {
+  const { t } = useApp();
+  return (
+    <section className="grid grid-cols-2 gap-3">
+      {[
+        [onRandom, t.btnRandom, t.btnRandomHint, S.btnPrimary, false],
+        [onComplain, complaining ? t.btnJudged : t.btnComplain, t.btnComplainHint, S.btnDanger, true],
+      ].map(([onClick, label, hint, tone, isComplain]) => (
+        <div key={hint} className="flex flex-col gap-1.5">
+          <button onClick={onClick} disabled={disabled || complaining} className={cx(S.btn, tone, "min-h-[3.25rem] flex-1 leading-tight")}>
+            {label}
+          </button>
+          <p className={cx(S.hint, "px-1 text-center", isComplain && "text-rose-500")}>{hint}</p>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+/** Última cosa que movió tu puntaje, justo debajo del número: causa y efecto a la vista. */
+export function LastChange({ entry }) {
+  const { t } = useApp();
+  if (!entry || entry.type === "runStart") return <p className={cx(S.hint, "mt-3")}>{t.lastChangeEmpty}</p>;
+  const dot = { up: "bg-pink-300", down: "bg-slate-400", neutral: "bg-rose-200" };
+  return (
+    <p key={entry.id} className="nd-pop mx-auto mt-3 flex max-w-[18rem] items-start gap-2 rounded-2xl bg-rose-50/70 px-3 py-2 text-left text-xs leading-snug text-slate-600" aria-live="polite">
+      <span className={cx("mt-1 h-2 w-2 shrink-0 rounded-full", dot[entry.tone])} />
+      <span className="min-w-0">{logText(entry, t)}</span>
+    </p>
   );
 }

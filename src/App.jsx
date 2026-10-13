@@ -24,10 +24,11 @@ import { useMetrics } from "./lib/metrics.js";
 import { SKINS } from "./skins.js";
 import { CameraTab } from "./ui/camera.jsx";
 import { ChallengesTab, NewChallengeSheet, dareState } from "./ui/challenges.jsx";
-import { AppCtx, Avatar, LangSwitch, Logo, S } from "./ui/common.jsx";
+import { FiSearch, FiShare2, FiVolume2, FiVolumeX } from "react-icons/fi";
+import { AppCtx, Avatar, Logo, S } from "./ui/common.jsx";
 import { FriendsTab } from "./ui/friends.jsx";
-import { ActivityLog, Composer, LockScreen, ModeBar, PostCard, PrisonScreen, RunResult, Services, SincereScreen, SuccessOverlay, Toasts, TrendChart } from "./ui/play.jsx";
-import { AccountSheet, HowToSheet, ModePicker, ShareSheet } from "./ui/sheets.jsx";
+import { ActivityLog, Composer, LastChange, LockScreen, ModeBar, PostCard, PrisonScreen, RunResult, ScoreActions, Services, SincereScreen, SuccessOverlay, Toasts, TrendChart } from "./ui/play.jsx";
+import { AccountSheet, HowToSheet, ModePicker, ShareSheet, WelcomeSheet } from "./ui/sheets.jsx";
 import { Onboarding, TabBar, Underage } from "./ui/shell.jsx";
 import { TodayTab } from "./ui/today.jsx";
 
@@ -50,6 +51,7 @@ export default function App() {
   const [lang, setLang] = useState(initialLang);
   const [tab, setTab] = useState("play");
   const [query, setQuery] = useState("");
+  const [welcome, setWelcome] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   const [trend, setTrend] = useState(null);
   const [showElite, setShowElite] = useState(false);
@@ -604,23 +606,23 @@ export default function App() {
             <div className={cx("pointer-events-none absolute inset-0 z-30 bg-slate-500 transition-opacity duration-1000", isWarning && tab === "play" && !noFilter ? "opacity-20" : "opacity-0")} />
 
             <div className="absolute inset-0 overflow-y-auto pb-24 [scrollbar-width:none]">
-              <div className="flex items-center justify-between px-6 pb-2 pt-3 text-xs font-medium text-slate-500">
+              <div className="flex items-center justify-between px-5 pb-2 pt-3 text-xs font-medium text-slate-500">
                 <Logo />
-                <div className="flex items-center gap-2">
-                  <LangSwitch lang={lang} onChange={setLang} />
+                <div className="flex items-center gap-1.5">
+                  <button type="button" onClick={() => setSoundOn((s) => !s)} className="grid h-9 w-9 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-700" aria-label={t.soundAria} aria-pressed={soundOn} title={t.soundAria}>
+                    {soundOn ? <FiVolume2 className="h-[18px] w-[18px]" aria-hidden="true" /> : <FiVolumeX className="h-[18px] w-[18px]" aria-hidden="true" />}
+                  </button>
                   {onboarded && (
                     <button
                       type="button"
                       onClick={() => setAccount(true)}
                       aria-label={t.account.open}
-                      className={cx("grid h-7 w-7 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-pink-200 to-rose-100 text-[11px] font-semibold text-pink-500", userId ? "ring-2 ring-pink-300" : "ring-1 ring-slate-200")}
+                      title={t.account.open}
+                      className={cx("grid h-9 w-9 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-pink-200 to-rose-100 text-sm font-semibold text-pink-500", userId ? "ring-2 ring-pink-300" : "ring-1 ring-slate-200")}
                     >
                       {myPhoto ? <img src={myPhoto} alt="" className="h-full w-full object-cover" /> : (profile?.name ?? "?").slice(0, 1).toUpperCase()}
                     </button>
                   )}
-                  <button onClick={() => setSoundOn((s) => !s)} className="text-sm" aria-label={t.soundAria} aria-pressed={soundOn}>
-                    {soundOn ? "🔊" : "🔇"}
-                  </button>
                 </div>
               </div>
 
@@ -646,46 +648,43 @@ export default function App() {
                     <ModeBar run={run} records={records} onChange={() => setPicker(true)} onHelp={() => setHowto(true)} />
 
                     <section className={cx(S.card, "relative p-5 text-center")}>
-                      <button onClick={shareRun} className="absolute right-4 top-4 rounded-full bg-rose-50 px-2.5 py-1 text-[10px] font-medium text-pink-500 ring-1 ring-pink-100" aria-label={t.share.share}>
-                        ↗ {t.share.share}
+                      <button onClick={shareRun} className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-rose-50 px-3 py-2 text-xs font-medium text-pink-500 ring-1 ring-pink-100 hover:bg-pink-100">
+                        <FiShare2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        {t.share.share}
                       </button>
                       <div className="flex justify-center">
-                        <Avatar person={meView} size="h-20 w-20 text-4xl" />
+                        <Avatar person={meView} size="h-16 w-16 text-3xl" />
                       </div>
-                      <h1 className="mt-3 font-medium text-slate-700">{me.name}</h1>
+                      <h1 className="mt-2 font-medium text-slate-700">{me.name}</h1>
                       <p className={S.muted}>
                         {me.handle} · {t.votesCount(me.votes)}
                       </p>
-                      <p key={me.score} className={cx("mt-2 text-7xl font-extralight tabular-nums", isWarning ? "text-slate-400" : "text-pink-400", trend === "up" && "nd-glow", trend === "down" && "nd-shake")}>
+                      <p className={cx(S.label, "mt-3")}>{t.yourScore}</p>
+                      <p key={me.score} className={cx("text-7xl font-extralight tabular-nums", isWarning ? "text-slate-400" : "text-pink-400", trend === "up" && "nd-glow", trend === "down" && "nd-shake")}>
                         {fmt(me.score)}
                       </p>
                       <div className="mt-3 flex flex-wrap justify-center gap-2">
                         <span className={cx(S.pill, influence.tone)}>{t.influence[influence.key]}</span>
                         {isElite && <span className={cx(S.pill, "bg-amber-50 text-amber-500")}>{t.elitePill}</span>}
                       </div>
+                      <LastChange entry={log[0]} />
                     </section>
+
+                    <ScoreActions onRandom={receiveRandomRating} onComplain={complain} complaining={complaining} disabled={!runActive} />
 
                     <TrendChart history={history} votes={me.votes} />
 
-                    <section className="grid grid-cols-2 gap-3">
-                      <button onClick={receiveRandomRating} disabled={complaining || !runActive} className={cx(S.btn, S.btnPrimary)}>
-                        {t.btnRandom}
-                      </button>
-                      <button onClick={complain} disabled={complaining || !runActive} className={cx(S.btn, S.btnDanger)}>
-                        {complaining ? t.btnJudged : t.btnComplain}
-                      </button>
-                    </section>
-
                     <Composer onPublish={publish} />
-                    <Services score={me.score} />
 
-                    <div className="relative">
-                      <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-300">⌕</span>
-                      <input id="xt-search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t.search} aria-label={t.search} className={cx(S.field, "py-3 pl-11 pr-4")} />
-                    </div>
-
-                    <section className="space-y-4">
-                      <p className={S.label}>{t.feed}</p>
+                    <section className="space-y-3">
+                      <div>
+                        <h2 className="text-base font-semibold text-slate-700">{t.feed}</h2>
+                        <p className={S.hint}>{t.feedHint}</p>
+                      </div>
+                      <div className="relative">
+                        <FiSearch className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                        <input id="xt-search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t.search} aria-label={t.search} className={cx(S.field, "py-3 pl-11 pr-4")} />
+                      </div>
                       {feed.length === 0 && <p className={cx(S.muted, "py-6 text-center")}>{t.noMatch(query)}</p>}
                       {feed.map((post) =>
                         post.isOwn ? (
@@ -713,6 +712,8 @@ export default function App() {
                       )}
                     </section>
 
+                    <Services score={me.score} />
+
                     <ActivityLog entries={log} />
 
                     <button onClick={() => startRun(run.mode)} className={cx(S.btn, S.btnGhost)}>
@@ -739,6 +740,10 @@ export default function App() {
                 skin={skin}
                 onSkin={setSkin}
                 onPhoto={setPhoto}
+                lang={lang}
+                onLang={setLang}
+                soundOn={soundOn}
+                onSound={setSoundOn}
                 onClose={() => setAccount(false)}
               />
             )}
@@ -755,7 +760,17 @@ export default function App() {
             {picker && <ModePicker records={records} onPick={startRun} onClose={() => setPicker(false)} onHelp={() => setHowto(true)} />}
             {howto && <HowToSheet current={run.mode} onClose={() => setHowto(false)} />}
             {sheet && <ShareSheet {...sheet} onClose={() => setSheet(null)} />}
-            {!profile && !underage && <Onboarding lang={lang} setLang={setLang} onDone={(name) => (dispatch({ type: "ONBOARD", name }), setHowto(true))} onUnderage={() => dispatch({ type: "UNDERAGE" })} />}
+            {welcome && (
+              <WelcomeSheet
+                name={profile?.name ?? me.name}
+                onStart={() => setWelcome(false)}
+                onRules={() => {
+                  setWelcome(false);
+                  setHowto(true);
+                }}
+              />
+            )}
+            {!profile && !underage && <Onboarding lang={lang} setLang={setLang} onDone={(name) => (dispatch({ type: "ONBOARD", name }), setWelcome(true))} onUnderage={() => dispatch({ type: "UNDERAGE" })} />}
             {underage && <Underage onWipe={wipe} />}
           </div>
         </div>
