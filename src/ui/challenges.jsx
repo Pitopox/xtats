@@ -5,7 +5,7 @@ import { DARE_HOURS } from "../game/config.js";
 import { cx, fmt } from "../game/engine.js";
 import { I18N } from "../i18n.js";
 import { fileToJpegBlob, fmtLeft } from "../lib/cards.js";
-import { Avatar, ProviderButton, S, StarRating, useApp } from "./common.jsx";
+import { Avatar, ProviderButton, S, Sheet, StarRating, useApp } from "./common.jsx";
 
 /* ---------- Retos personalizados ---------- */
 export const STATUS_TONE = {
@@ -334,10 +334,8 @@ export function NewChallengeSheet({ myName, onClose, onSent }) {
   };
   const chip = (on) => cx("flex items-center gap-1.5 rounded-full py-1 pl-1 pr-3 text-xs ring-1 transition", on ? "bg-pink-300 text-white ring-pink-300" : "bg-white text-slate-500 ring-slate-200 hover:ring-pink-200");
   return (
-    <div className="absolute inset-0 z-[58] flex flex-col justify-end bg-slate-900/20 backdrop-blur-[2px]" onClick={onClose}>
-      <form onSubmit={submit} onClick={(e) => e.stopPropagation()} className="nd-sheet max-h-[92%] space-y-4 overflow-y-auto rounded-t-[2rem] bg-white p-5 pb-8 shadow-2xl">
-        <div className="mx-auto h-1 w-10 rounded-full bg-slate-200" />
-        <h2 className="text-lg font-medium text-slate-700">{C.new}</h2>
+    <Sheet title={C.new} onClose={onClose} z="z-[58]">
+      <form onSubmit={submit} className="space-y-4">
         <label className="block space-y-1">
           <span className={S.label}>{C.form.title}</span>
           <input id="xt-dare-title" value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} placeholder={C.form.titlePh} className={cx(S.field, "px-4 py-3")} />
@@ -400,7 +398,7 @@ export function NewChallengeSheet({ myName, onClose, onSent }) {
           </button>
         </div>
       </form>
-    </div>
+    </Sheet>
   );
 }
 
