@@ -16,6 +16,8 @@ npm install
 npm run dev        # http://localhost:5173
 npm run build      # versión de producción en dist/ (incluye el service worker)
 npm run preview    # sirve dist/ para probar la instalación como app
+npm test           # pruebas del motor de puntaje, del estado y de la interfaz
+npm run lint       # revisión de código (ESLint + reglas de hooks de React)
 ```
 
 Para instalarla en un celular: publica `dist/` en un hosting con HTTPS (Vercel, Netlify, Cloudflare Pages), ábrela en el teléfono y elige **Agregar a pantalla de inicio**.
@@ -38,12 +40,17 @@ Además:
 ## Estructura
 
 ```
-src/App.jsx     lógica y UI (comentado por secciones)
-src/backend.js  conexión con Supabase (login, amigos, récords, reto diario)
-supabase/       esquema SQL con permisos
-src/i18n.js     todos los textos en es / en / pt
-src/main.jsx    arranque + registro del service worker
-public/         manifest, service worker, íconos, imagen de vista previa
+src/App.jsx            orquestación: cascada, paranoia, ansiedad, modos, sesión y retos
+src/game/config.js     umbrales, modos, bots, palabras y datos de demo
+src/game/engine.js     motor XTATS y utilidades (funciones puras, con pruebas)
+src/game/state.js      reducer de la partida y guardado en localStorage (con pruebas)
+src/lib/               audio sintetizado, tarjetas 9:16 en canvas, métricas
+src/ui/                componentes por pestaña: play, today, camera, friends, challenges, sheets, shell
+src/styles/global.js   variables de los estilos y animaciones (se inyectan una vez)
+src/backend.js         conexión con Supabase (se descarga solo si hay claves)
+src/i18n.js            todos los textos en es / en / pt
+supabase/              esquema SQL y migraciones con permisos
+public/                manifest, service worker, íconos, imagen de vista previa
 ```
 
 ## Publicar y conectar con Supabase
@@ -130,4 +137,6 @@ Apple y Google exigen, para apps con contenido de usuarios, filtrar contenido of
   - Máximo 10 retos enviados por día y 10 publicaciones por reto.
 - **Puntaje social persistente** en `profiles.score`. Nadie puede escribirlo desde el cliente.
 
-Migraciones, en orden: `supabase/schema.sql`, `supabase/migrations/002_social_score_challenges.sql` y `supabase/migrations/003_challenge_posts_rating_sharing.sql`.
+Migraciones, en orden: `supabase/schema.sql`, `supabase/migrations/002_social_score_challenges.sql`, `supabase/migrations/003_challenge_posts_rating_sharing.sql` y `supabase/migrations/004_hardening.sql`.
+
+`004_hardening.sql` limita a 20 por hora los intentos de agregar amigos y obliga a que la foto de perfil sea la propia. Aplícala **después** de publicar la versión 0.7, porque desde ahí `add_friend` devuelve `null` con un código inválido.
